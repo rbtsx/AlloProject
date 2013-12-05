@@ -1,3 +1,4 @@
+#!/bin/sh
 
 # get AlloSystem as a submodule
 git init
