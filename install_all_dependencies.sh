@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/bin/sh
+
 # AlloProject dependencies install script
 
 if [ ! -d "AlloSystem/allcore" ]; then
