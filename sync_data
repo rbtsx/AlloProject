@@ -1,0 +1,3 @@
+#!/bin/sh
+
+rsync -avz nonce.mat.ucsb.edu:/kepler/wav .
