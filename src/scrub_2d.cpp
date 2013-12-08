@@ -2,6 +2,7 @@
 #include "allocore/spatial/al_HashSpace.hpp"
 using namespace al;
 #include "Gamma/SamplePlayer.h"
+#include "Gamma/Filter.h"
 #include <vector>
 #include <glob.h>
 #include <iostream>
@@ -21,19 +22,39 @@ struct StarSystem {
   Vec3f position;
 };
 
+struct Box {
+  float top, bottom, left, right;
+  Box() : top(-999), bottom(999), left(999), right(-999) {}
+  void verticle(float f) {
+    if (f < bottom) bottom = f;
+    if (f > top) top = f;
+  }
+  void horizontal(float f) {
+    if (f < left) left = f;
+    if (f > right) right = f;
+  }
+};
+
+ostream& operator<<(ostream& out, const Box& b) {
+  cout << "verticle:" << b.bottom << "," << b.top << " horizontal:" << b.left
+       << "," << b.right;
+  return out;
+}
+
 struct MyApp : App {
-  vector<StarSystem> starSystem;
-
+  gam::Biquad<> filter;
+  vector<StarSystem> system;
   HashSpace space;
-  Mesh ball;
-
+  Mesh point;
   Vec3f mouse;
-
   rnd::Random<> rng;
+  double radius;
 
-  HashSpace::Query qmany;
+  Box box;
 
-  MyApp() : space(7, 10000), qmany(20) {
+  MyApp() : space(7, 10000) {
+
+    point.vertex(0, 0, 0);
 
     map<string, Vec3f> where;
     char s[100];
@@ -56,18 +77,15 @@ struct MyApp : App {
 
       if (where.find(buffer) == where.end()) {
         where[buffer] = Vec3f(ra, dec, 0);
+        box.horizontal(ra);
+        box.verticle(dec);
         // printf("where[%s] = Vec3f(%f, %f, 0);\n", buffer, ra, dec);
-      }
-      else {
-        cout << "koi " << buffer << " already in map" << endl;
+      } else {
+        // cout << "koi " << buffer << " already in map" << endl;
       }
     }
 
-    cout << where.size() << endl;
-
-    //for (std::map<string, Vec3f>::iterator it = where.begin();
-    //     it != where.end(); ++it)
-    //  std::cout << it->first << " => " << it->second << '\n';
+    cout << "bounding box is " << box << endl;
 
     // use a glob to find all the .wav files for loading
     //
@@ -76,17 +94,19 @@ struct MyApp : App {
 
     // allocate space for each lightcurve (sample player + name)
     //
-    starSystem.resize(result.gl_pathc);
-    cout << "loading " << starSystem.size() << " star systems\n";
+    system.resize(result.gl_pathc);
+    cout << "loading " << system.size() << " star systems\n";
 
     for (int i = 0; i < result.gl_pathc; ++i) {
 
       // load the lightcurve .wav into a sample player
       //
-      if (!starSystem[i].player.load(result.gl_pathv[i])) {
+      if (!system[i].player.load(result.gl_pathv[i])) {
         cout << "FAIL!\n";
         exit(-1);
       }
+
+      system[i].player.rate(0.5);
 
       // take the koi name out of the file/glob string
       //
@@ -94,44 +114,69 @@ struct MyApp : App {
       buffer[9] = '\0';
       strncpy(buffer, result.gl_pathv[i] + 4, 9);
       // cout << buffer << endl;
-      starSystem[i].name = buffer;
+      system[i].name = buffer;
 
       map<string, Vec3f>::iterator it = where.find(buffer);
       if (it == where.end()) {
-        cout << "lookup failed on " << buffer << endl;
-        starSystem[i].position = Vec3f(rnd::uniformS(288.0), rnd::uniformS(52.0), 0);
-      }
-      else {
-        cout << "found " << buffer << " ... inserting " << it->second << endl;
-        starSystem[i].position = it->second;
+        // cout << "lookup failed on " << buffer << ". assigning random
+        // position" << endl;
+        // ra min/max: 280.258/301.721
+        // dec min/max: 36.5774/52.1491
+
+        system[i].position = Vec3f(rnd::uniform(280.258, 301.721),
+                                   rnd::uniform(36.5774, 52.1491), 0);
+      } else {
+        // cout << "found " << buffer << " ... inserting " << it->second <<
+        // endl;
+        system[i].position = it->second;
       }
     }
 
-    for (unsigned i = 0; i < space.numObjects(); i++) {
-      space.move(i, space.dim() * rng.uniform() * rng.uniform(),
-                 space.dim() * rng.uniform() * rng.uniform(), 0);
+    for (int i = 0; i < system.size(); ++i) {
+      system[i].position.x -= box.left;
+      system[i].position.x *= 1 / (box.right - box.left);
+      system[i].position.y -= box.bottom;
+      system[i].position.y *= 1 / (box.top - box.bottom);
     }
 
-    addSphere(ball);
-    ball.primitive(Graphics::TRIANGLES);
-    ball.scale(0.008);
-    ball.generateNormals();
+    for (unsigned i = 0; i < space.numObjects(); i++)
+      space.move(i, system[i].position.x * space.dim(),
+                 system[i].position.y * space.dim(), 0);
 
-    initAudio(44100, 1024);
-    initWindow(Window::Dim(500, 500));
+    radius = space.maxRadius() * 0.05;
+    initAudio();
+    initWindow(Window::Dim(800, 800));
   }
 
   virtual void onSound(AudioIOData& io) {
+    gam::Sync::master().spu(audioIO().fps());
 
+    bool mouseOutOfBounds =
+        ((mouse.x < 0) || (mouse.y < 0) || (mouse.x > 1) || (mouse.y > 1));
+    if (mouseOutOfBounds) {
+      while (io()) io.out(0) = io.out(1) = 0;
+      return;
+    }
+
+    HashSpace::Query qmany(10);
+    qmany.clear();
+    Vec3f local = mouse * space.dim();
+    int results = qmany(space, local, radius);
     while (io()) {
       float f = 0;
-      // for (int i = 0; i < nearby[nearest].size(); ++i) {
-      //  System& s(player[nearby[nearest][i]]);
-      //  f += s.player() * (1 - (abs((s.position - mouse).mag()) / 0.1));
-      //}
-      // f /= nearby[nearest].size();
-      io.out(0) = f;
-      io.out(1) = f;
+      int n = 0;
+      for (int i = 0; i < results; i++) {
+        float d = abs((local - qmany[i]->pos).mag());
+        if (d > radius) continue;
+        n++;
+        if (qmany[i]->id >= system.size()) {
+          cout << "GOT HERE\n";
+          continue;
+        }
+        f += system[qmany[i]->id].player() * (1 - d / radius);
+      }
+      f /= n;
+      io.out(0) = io.out(1) = f;
     }
   }
 
@@ -141,24 +186,26 @@ struct MyApp : App {
   }
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
-    for (int i = 0; i < starSystem.size(); ++i) {
-      g.pushMatrix();
-      g.translate(starSystem[i].position * 0.01);
-      g.draw(ball);
+    g.pushMatrix(Graphics::PROJECTION);
+    g.loadMatrix(Matrix4f::ortho2D(0, 1, 0, 1));
+
+    for (int i = 0; i < system.size(); ++i) {
+      g.pushMatrix(Graphics::MODELVIEW);
+      g.loadIdentity();
+      g.translate(system[i].position);
+      g.draw(point);
       g.popMatrix();
     }
+
+    g.popMatrix(Graphics::PROJECTION);
   }
 
   virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
-    float x = 2.0f * m.x() / w.dimensions().w - 1.0f;
-    float y = 2.0f * m.y() / w.dimensions().h - 1.0f;
-    if (x < -1) x = -1;
-    if (y < -1) y = -1;
-    if (x > 1) x = 1;
-    if (y > 1) y = 1;
-    y *= -1;
+    float x = (float)m.x() / w.dimensions().w;
+    float y = (float)m.y() / w.dimensions().h;
+    y = 1 - y;
     mouse = Vec3f(x, y, 0);
-    std::cout << "(" << x << ", " << y << ")\n";
+    // std::cout << "(" << x << ", " << y << ")\n";
   }
 };
 
