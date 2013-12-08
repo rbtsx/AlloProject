@@ -50,19 +50,22 @@ struct MyApp : App {
   Vec3f mouse;
   rnd::Random<> rng;
   double radius;
+  float rate;
 
   Box box;
 
-  MyApp() : space(7, 4000), filter(4500, 2) {
+  MyApp() : space(8, 4000), filter(9000) {
 
-    reverb.bandwidth(0.9);  // Low-pass amount on input, in [0,1]
-    reverb.damping(0.5);    // High-frequency damping, in [0,1]
-    reverb.decay(0.2);      // Tail decay factor, in [0,1]
+    rate = 0.75;
+
+    reverb.bandwidth(0.5);  // Low-pass amount on input, in [0,1]
+    reverb.damping(0.7);    // High-frequency damping, in [0,1]
+    reverb.decay(0.4);      // Tail decay factor, in [0,1]
 
     // Diffusion amounts
     // Values near 0.7 are recommended. Moving further away from 0.7 will lead
     // to more distinct echoes.
-    reverb.diffusion(0.76, 0.666, 0.707, 0.571);
+    reverb.diffusion(0.76, 0.666, 0.707, 0.271);
 
     point.vertex(0, 0, 0);
 
@@ -125,7 +128,7 @@ struct MyApp : App {
 
       bytes += 4 * system[i].player.size();
 
-      system[i].player.rate(0.75);
+      system[i].player.rate(rate);
 
       // take the koi name out of the file/glob string
       //
@@ -171,6 +174,8 @@ struct MyApp : App {
   virtual void onSound(AudioIOData& io) {
     gam::Sync::master().spu(audioIO().fps());
 
+    for (int i = 0; i < system.size(); ++i) system[i].player.rate(rate);
+
     Vec3f local = mouse;
     bool mouseOffScreen = false;
     if (local.x < 0) {
@@ -192,7 +197,7 @@ struct MyApp : App {
 
     local *= space.dim();
 
-    HashSpace::Query qmany(10);
+    HashSpace::Query qmany(50);
     qmany.clear();
     int results = qmany(space, local, radius);
     cout << results << endl;
@@ -211,7 +216,7 @@ struct MyApp : App {
         f += x;
       }
       f /= 2;
-      //f /= n;
+      // f /= n;
       // f *= mouseOffScreen ? 0.0 : 1.0;
       if (isnan(f)) f = 0;
       f = filter(f);
@@ -245,21 +250,29 @@ struct MyApp : App {
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
-    if (k.key() == ',') {
-      radius -= 0.5;
-    }
-    else if (k.key() == '.') {
-      radius += 0.5;
+    switch (k.key()) {
+      case ',':
+        radius -= 0.5;
+        break;
+      case '.':
+        radius += 0.5;
+        break;
+      case ';':
+        rate -= 0.1;
+        break;
+      case '\'':
+        rate += 0.1;
+        break;
     }
   }
 
-  virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
-    float x = (float)m.x() / w.dimensions().w;
-    float y = (float)m.y() / w.dimensions().h;
-    y = 1 - y;
-    mouse = Vec3f(x, y, 0);
-    // std::cout << "(" << x << ", " << y << ")\n";
-  }
-};
+    virtual void onMouseMove(const ViewpointWindow & w, const Mouse & m) {
+      float x = (float)m.x() / w.dimensions().w;
+      float y = (float)m.y() / w.dimensions().h;
+      y = 1 - y;
+      mouse = Vec3f(x, y, 0);
+      // std::cout << "(" << x << ", " << y << ")\n";
+    }
+  };
 
-int main() { MyApp().start(); }
+  int main() { MyApp().start(); }
