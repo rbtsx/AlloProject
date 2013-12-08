@@ -42,6 +42,7 @@ ostream& operator<<(ostream& out, const Box& b) {
 }
 
 struct MyApp : App {
+  Reverb<float> reverb;
   gam::Biquad<> filter;
   vector<StarSystem> system;
   HashSpace space;
@@ -52,19 +53,34 @@ struct MyApp : App {
 
   Box box;
 
-  MyApp() : space(7, 10000) {
+  MyApp() : space(7, 4000), filter(4500, 2) {
+
+    reverb.bandwidth(0.9);  // Low-pass amount on input, in [0,1]
+    reverb.damping(0.5);    // High-frequency damping, in [0,1]
+    reverb.decay(0.2);      // Tail decay factor, in [0,1]
+
+    // Diffusion amounts
+    // Values near 0.7 are recommended. Moving further away from 0.7 will lead
+    // to more distinct echoes.
+    reverb.diffusion(0.76, 0.666, 0.707, 0.571);
 
     point.vertex(0, 0, 0);
 
     map<string, Vec3f> where;
     char s[100];
-    ifstream foo("../../koi.txt");
-    foo.getline(s, sizeof(s));
+    ifstream foo("../../map.txt");
     while (!foo.eof()) {
+      // 000757450|84|73.4470|46.2242|291.1376|36.5774
       foo.getline(s, sizeof(s));
       char* p = s;
       int koi = atoi(p);
       if (koi == 0) break;
+      while (*p != '|') p++;
+      p++;
+      while (*p != '|') p++;
+      p++;
+      while (*p != '|') p++;
+      p++;
       while (*p != '|') p++;
       p++;
       float ra = atof(p);
@@ -81,7 +97,7 @@ struct MyApp : App {
         box.verticle(dec);
         // printf("where[%s] = Vec3f(%f, %f, 0);\n", buffer, ra, dec);
       } else {
-        // cout << "koi " << buffer << " already in map" << endl;
+        cout << "koi " << buffer << " already in map" << endl;
       }
     }
 
@@ -97,6 +113,7 @@ struct MyApp : App {
     system.resize(result.gl_pathc);
     cout << "loading " << system.size() << " star systems\n";
 
+    int bytes = 0;
     for (int i = 0; i < result.gl_pathc; ++i) {
 
       // load the lightcurve .wav into a sample player
@@ -106,7 +123,9 @@ struct MyApp : App {
         exit(-1);
       }
 
-      system[i].player.rate(0.5);
+      bytes += 4 * system[i].player.size();
+
+      system[i].player.rate(0.75);
 
       // take the koi name out of the file/glob string
       //
@@ -118,8 +137,8 @@ struct MyApp : App {
 
       map<string, Vec3f>::iterator it = where.find(buffer);
       if (it == where.end()) {
-        // cout << "lookup failed on " << buffer << ". assigning random
-        // position" << endl;
+        cout << "lookup failed on " << buffer << ". assigning random position"
+             << endl;
         // ra min/max: 280.258/301.721
         // dec min/max: 36.5774/52.1491
 
@@ -131,6 +150,7 @@ struct MyApp : App {
         system[i].position = it->second;
       }
     }
+    cout << "used " << bytes << " bytes\n";
 
     for (int i = 0; i < system.size(); ++i) {
       system[i].position.x -= box.left;
@@ -139,11 +159,11 @@ struct MyApp : App {
       system[i].position.y *= 1 / (box.top - box.bottom);
     }
 
-    for (unsigned i = 0; i < space.numObjects(); i++)
+    for (unsigned i = 0; i < system.size(); i++)
       space.move(i, system[i].position.x * space.dim(),
                  system[i].position.y * space.dim(), 0);
 
-    radius = space.maxRadius() * 0.05;
+    radius = space.maxRadius() * 0.02;
     initAudio();
     initWindow(Window::Dim(800, 800));
   }
@@ -151,17 +171,31 @@ struct MyApp : App {
   virtual void onSound(AudioIOData& io) {
     gam::Sync::master().spu(audioIO().fps());
 
-    bool mouseOutOfBounds =
-        ((mouse.x < 0) || (mouse.y < 0) || (mouse.x > 1) || (mouse.y > 1));
-    if (mouseOutOfBounds) {
-      while (io()) io.out(0) = io.out(1) = 0;
-      return;
+    Vec3f local = mouse;
+    bool mouseOffScreen = false;
+    if (local.x < 0) {
+      local.x = 0;
+      mouseOffScreen = true;
     }
+    if (local.x > 1) {
+      local.x = 1;
+      mouseOffScreen = true;
+    }
+    if (local.y < 0) {
+      local.y = 0;
+      mouseOffScreen = true;
+    }
+    if (local.y > 1) {
+      local.y = 1;
+      mouseOffScreen = true;
+    }
+
+    local *= space.dim();
 
     HashSpace::Query qmany(10);
     qmany.clear();
-    Vec3f local = mouse * space.dim();
     int results = qmany(space, local, radius);
+    cout << results << endl;
     while (io()) {
       float f = 0;
       int n = 0;
@@ -170,13 +204,23 @@ struct MyApp : App {
         if (d > radius) continue;
         n++;
         if (qmany[i]->id >= system.size()) {
-          cout << "GOT HERE\n";
+          cout << "id " << qmany[i]->id << " is out of bounds\n";
           continue;
         }
-        f += system[qmany[i]->id].player() * (1 - d / radius);
+        float x = system[qmany[i]->id].player() * (1 - d / radius);
+        f += x;
       }
-      f /= n;
-      io.out(0) = io.out(1) = f;
+      f /= 2;
+      //f /= n;
+      // f *= mouseOffScreen ? 0.0 : 1.0;
+      if (isnan(f)) f = 0;
+      f = filter(f);
+
+      float wet1, wet2;
+      reverb(f, wet1, wet2);
+      io.out(0) = wet1 * 0.7 + f * 0.3;
+      io.out(1) = wet2 * 0.7 + f * 0.3;
+      // io.out(0) = io.out(1) = f;
     }
   }
 
@@ -198,6 +242,15 @@ struct MyApp : App {
     }
 
     g.popMatrix(Graphics::PROJECTION);
+  }
+
+  virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
+    if (k.key() == ',') {
+      radius -= 0.5;
+    }
+    else if (k.key() == '.') {
+      radius += 0.5;
+    }
   }
 
   virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
