@@ -71,7 +71,7 @@ struct MyApp : App {
 
     map<string, Vec3f> where;
     char s[100];
-    ifstream foo("../../map.txt");
+    ifstream foo("txt/map.txt");
     while (!foo.eof()) {
       // 000757450|84|73.4470|46.2242|291.1376|36.5774
       foo.getline(s, sizeof(s));
