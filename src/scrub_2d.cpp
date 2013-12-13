@@ -125,7 +125,6 @@ struct MyApp : App {
         cout << "FAIL!\n";
         exit(-1);
       }
-
       bytes += 4 * system[i].player.size();
 
       system[i].player.rate(rate);
