@@ -1,4 +1,10 @@
+.DS_Store
 *~
 wav/
 txt/
 bmp/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+build/
+cmake_install.cmake
