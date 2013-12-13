@@ -1,5 +1,6 @@
 #!/bin/sh
 
-rsync -avz nonce.mat.ucsb.edu:/kepler/wav .
+mkdir -p wav
+rsync -avz "nonce.mat.ucsb.edu:/kepler/wav/*_fixed.wav" wav
 rsync -avz nonce.mat.ucsb.edu:/kepler/bmp .
 rsync -avz nonce.mat.ucsb.edu:/kepler/txt .
