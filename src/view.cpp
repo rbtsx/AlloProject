@@ -20,6 +20,7 @@ struct KOI {
   string name;
   Vec3f pos;
   DynamicSamplePlayer player;
+  bool hasNan;
 };
 
 struct Set {
@@ -36,8 +37,16 @@ struct MyApp : App {
   int channel;
   Vec3f mouse;
   int nearest;
+  Mesh mesh;
 
   MyApp() {
+
+    mesh.primitive(Graphics::LINE_LOOP);
+    for (int i = 0; i < 21; i++) {
+      float f = i / 20.0f * M_PI * 2.0f;
+      mesh.vertex(15 * sin(f), 15 * cos(f), 0);
+    }
+
     channel = 0;
     nearest = 0;
     mouse = Vec3f(0, 0, 0);
@@ -53,24 +62,29 @@ struct MyApp : App {
     //}
 
     initAudio();
-    initWindow(Window::Dim(512, 512));
+    initWindow(Window::Dim(800, 800));
   }
 
   virtual void onSound(AudioIOData& io) {
     gam::Sync::master().spu(audioIO().fps());
 
+    int localChannel = channel;
+    int localNearest = nearest;
+    vector<KOI>& koi_list(data[localChannel].koi);
+    KOI& koi(koi_list[nearest]);
+
     while (io()) {
       float f = 0;
-      if (data[channel].koi[nearest].player.size() != 0)
-        f += data[channel].koi[nearest].player();
-      if (isnan(f))
-        f = 0;
+      if (koi.player.size() > 1)
+        f += koi.player();
+      if (isnan(f)) f = 0;
       io.out(0) = io.out(1) = f;
     }
   }
 
   virtual void onAnimate(double dt) {
-    vector<KOI>& koi(data[channel].koi);
+    int localChannel = channel;
+    vector<KOI>& koi(data[localChannel].koi);
 
     float smallestDistance = 10000;
     int indexOfClosest = -1;
@@ -82,12 +96,31 @@ struct MyApp : App {
       }
     }
 
-    nearest = indexOfClosest;
-    cout << data[channel].koi[nearest].name << endl;
+    if (nearest != indexOfClosest) {
+      nearest = indexOfClosest;
+      cout << koi[nearest].name << ": " << koi[nearest].player.size() << (koi[nearest].hasNan ? " hasNan" : "") << endl;
+    }
   }
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
     data[channel].texture.quadViewport(g);
+
+    g.pushMatrix(Graphics::PROJECTION);
+    g.loadMatrix(Matrix4f::ortho2D(0, 1132, 0, 1070));
+    g.pushMatrix(Graphics::MODELVIEW);
+    g.loadIdentity();
+
+    int localChannel = channel;
+    vector<KOI>& koi(data[localChannel].koi);
+    for (int i = 0; i < koi.size(); i++) {
+      g.pushMatrix();
+      g.translate(koi[i].pos);
+      g.draw(mesh);
+      g.popMatrix();
+    }
+
+    g.popMatrix();
+    g.popMatrix(Graphics::PROJECTION);
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
@@ -104,13 +137,18 @@ struct MyApp : App {
   }
 
   virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
-    float x = (float)m.x() / w.dimensions().w * data[0].texture.array().width();
-    float y = (float)m.y() / w.dimensions().h * data[0].texture.array().height();
-    //y = 1 - y;
+    float x = (float)m.x() / w.dimensions().w;
+    float y = (float)m.y() / w.dimensions().h;
+
+    y = 1 - y;
+
+    x *= 1132;
+    y *= 1070;
+
+    // cout << x << ", " << y << endl;
+
     mouse.x = x;
     mouse.y = y;
-
-    //std::cout << "(" << x << ", " << y << ")\n";
   }
 };
 
@@ -187,6 +225,15 @@ void load(Data& data) {
       cout << "failed to load " << fileName << endl;
     } else {
       bytes += 4 * koi.player.size();
+
+      bool hasNan = false;
+      for (int i = 0; i < koi.player.size(); i++)
+        if (isnan(koi.player[i])) {
+          hasNan = true;
+          break;
+        }
+      koi.hasNan = hasNan;
+      //cout << koi.name << ": " << channel << " " << koi.player.size() << (hasNan ? " hasNan" : "") << endl;
     }
   }
 
