@@ -213,7 +213,8 @@ void load(Data& data) {
     fileName += koi_id_string;
     fileName += "_fixed.wav";
 
-    data[channel - 1].koi.push_back(KOI());
+    KOI blahblah;
+    data[channel - 1].koi.push_back(blahblah);
     KOI& koi(data[channel - 1].koi[data[channel - 1].koi.size() - 1]);
 
     koi.pos.x = x;
@@ -224,6 +225,10 @@ void load(Data& data) {
     if (!koi.player.load(fileName.c_str())) {
       cout << "failed to load " << fileName << endl;
     } else {
+
+      while (koi.player.size() < 2)
+        koi.player.load(fileName.c_str());
+
       bytes += 4 * koi.player.size();
 
       bool hasNan = false;

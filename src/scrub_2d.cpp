@@ -265,13 +265,13 @@ struct MyApp : App {
     }
   }
 
-    virtual void onMouseMove(const ViewpointWindow & w, const Mouse & m) {
-      float x = (float)m.x() / w.dimensions().w;
-      float y = (float)m.y() / w.dimensions().h;
-      y = 1 - y;
-      mouse = Vec3f(x, y, 0);
-      // std::cout << "(" << x << ", " << y << ")\n";
-    }
-  };
+  virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
+    float x = (float)m.x() / w.dimensions().w;
+    float y = (float)m.y() / w.dimensions().h;
+    y = 1 - y;
+    mouse = Vec3f(x, y, 0);
+    // std::cout << "(" << x << ", " << y << ")\n";
+  }
+};
 
-  int main() { MyApp().start(); }
+int main() { MyApp().start(); }
