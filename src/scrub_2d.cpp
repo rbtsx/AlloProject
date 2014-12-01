@@ -10,9 +10,11 @@ using namespace al;
 #include <map>
 using namespace std;
 
-struct DynamicSamplePlayer
-    : gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap> {
-  DynamicSamplePlayer() : SamplePlayer("") {}
+typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>
+    GammaSamplePlayerFloatCubicWrap;
+
+struct DynamicSamplePlayer : GammaSamplePlayerFloatCubicWrap {
+  DynamicSamplePlayer() : GammaSamplePlayerFloatCubicWrap() {}
   DynamicSamplePlayer(const DynamicSamplePlayer& other) {}
 };
 
