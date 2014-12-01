@@ -2,6 +2,7 @@
 *~
 wav/
 txt/
+tmp/
 bmp/
 CMakeCache.txt
 CMakeFiles/
