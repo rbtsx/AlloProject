@@ -1,5 +1,6 @@
 #include "allocore/io/al_App.hpp"
 #include "allocore/spatial/al_HashSpace.hpp"
+#include "alloutil/al_AlloSphereAudioSpatializer.hpp"
 using namespace al;
 #include "Gamma/SamplePlayer.h"
 #include "Gamma/Filter.h"
@@ -9,6 +10,8 @@ using namespace al;
 #include <fstream>
 #include <map>
 using namespace std;
+
+#define MAXIMUM_NUMBER_OF_SOUND_SOURCES (5)
 
 typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>
     GammaSamplePlayerFloatCubicWrap;
@@ -43,7 +46,7 @@ ostream& operator<<(ostream& out, const Box& b) {
   return out;
 }
 
-struct MyApp : App {
+struct MyApp : App, AlloSphereAudioSpatializer {
   Reverb<float> reverb;
   gam::Biquad<> filter;
   vector<StarSystem> system;
@@ -53,10 +56,20 @@ struct MyApp : App {
   rnd::Random<> rng;
   double radius;
   float rate;
+  bool mouseMoved;
 
   Box box;
 
+  SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
+
   MyApp() : space(8, 4000), filter(9000) {
+
+    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
+      source[i].nearClip(0.0);
+      source[i].farClip(0.07);
+    }
+
+    mouseMoved = false;
 
     rate = 0.75;
 
@@ -168,66 +181,64 @@ struct MyApp : App {
                  system[i].position.y * space.dim(), 0);
 
     radius = space.maxRadius() * 0.02;
-    initAudio();
+
     initWindow(Window::Dim(800, 800));
+
+    // init audio and ambisonic spatialization
+    AlloSphereAudioSpatializer::initAudio();
+    AlloSphereAudioSpatializer::initSpatialization();
+    gam::Sync::master().spu(AlloSphereAudioSpatializer::audioIO().fps());
+
+    // add our sound source to the audio scene
+    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
+      scene()->addSource(source[i]);
+
+    // use this for smoother spatialization and dopler effect
+    // good for fast moving sources or listener
+    // computationally expensive!!
+    scene()->usePerSampleProcessing(true);
   }
 
   virtual void onSound(AudioIOData& io) {
-    gam::Sync::master().spu(audioIO().fps());
 
     for (int i = 0; i < system.size(); ++i) system[i].player.rate(rate);
 
     Vec3f local = mouse;
-    bool mouseOffScreen = false;
-    if (local.x < 0) {
-      local.x = 0;
-      mouseOffScreen = true;
-    }
-    if (local.x > 1) {
-      local.x = 1;
-      mouseOffScreen = true;
-    }
-    if (local.y < 0) {
-      local.y = 0;
-      mouseOffScreen = true;
-    }
-    if (local.y > 1) {
-      local.y = 1;
-      mouseOffScreen = true;
-    }
 
-    local *= space.dim();
-
-    HashSpace::Query qmany(50);
+    HashSpace::Query qmany(MAXIMUM_NUMBER_OF_SOUND_SOURCES);
     qmany.clear();
-    int results = qmany(space, local, radius);
-    cout << results << endl;
-    while (io()) {
-      float f = 0;
-      int n = 0;
-      for (int i = 0; i < results; i++) {
-        float d = abs((local - qmany[i]->pos).mag());
-        if (d > radius) continue;
-        n++;
-        if (qmany[i]->id >= system.size()) {
-          cout << "id " << qmany[i]->id << " is out of bounds\n";
-          continue;
-        }
-        float x = system[qmany[i]->id].player() * (1 - d / radius);
-        f += x;
-      }
-      f /= 2;
-      // f /= n;
-      // f *= mouseOffScreen ? 0.0 : 1.0;
-      if (isnan(f)) f = 0;
-      f = filter(f);
+    int results = qmany(space, local * space.dim(), radius);
 
-      float wet1, wet2;
-      reverb(f, wet1, wet2);
-      io.out(0) = wet1 * 0.7 + f * 0.3;
-      io.out(1) = wet2 * 0.7 + f * 0.3;
-      // io.out(0) = io.out(1) = f;
+    if (mouseMoved) {
+      mouseMoved = false;
+      if (results) cout << "mouse:" << mouse << '\n';
+      for (int i = 0; i < results; i++) {
+        cout << "  " << system[qmany[i]->id].name << " :: ";
+        system[qmany[i]->id].position.print();
+        cout << "\n";
+      }
     }
+
+    for (int i = 0; i < results; i++)
+      source[i].pose(Pose(system[qmany[i]->id].position, Quatf()));
+    for (int i = results; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
+      source[i].pose(Pose(local, Quatf()));
+
+    while (io()) {
+
+      for (int i = 0; i < results; i++) {
+        float f = system[qmany[i]->id].player();
+        double d = isnan(f) ? 0.0 : (double)f;
+        source[i].writeSample(d);
+      }
+
+      for (int i = results; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
+        source[i].writeSample(0.0);
+    }
+
+    // set listener pose and render audio sources
+    listener()->pose(Pose(local, Quatf()));
+    scene()->render(io);
   }
 
   virtual void onAnimate(double dt) {
@@ -272,8 +283,13 @@ struct MyApp : App {
     float y = (float)m.y() / w.dimensions().h;
     y = 1 - y;
     mouse = Vec3f(x, y, 0);
-    // std::cout << "(" << x << ", " << y << ")\n";
+    std::cout << "mouse: (" << x << ", " << y << ")\n";
+    mouseMoved = true;
   }
 };
 
-int main() { MyApp().start(); }
+int main() {
+  MyApp app;
+  app.AlloSphereAudioSpatializer::audioIO().start();
+  app.start();
+}
