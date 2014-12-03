@@ -54,9 +54,11 @@ struct MyApp : App, AlloSphereAudioSpatializer {
   Mesh point;
   Vec3f mouse;
   rnd::Random<> rng;
-  double radius;
+  double searchRadius;
   float rate;
   bool mouseMoved;
+
+  Mesh ring;
 
   Box box;
 
@@ -64,9 +66,15 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
   MyApp() : space(8, 4000), filter(9000) {
 
-    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      source[i].nearClip(0.0);
-      source[i].farClip(0.07);
+    int N = 20;
+    ring.primitive(Graphics::LINE_STRIP);
+    for (int i = 0; i < N + 1; ++i) {
+      float theta = M_2PI / N * i;
+      float x = cos(theta);
+      float y = sin(theta);
+      ring.vertex(x, y, 0);
+      cout << x << ", " << y << endl;
+      ring.color(1, 1, 1);
     }
 
     mouseMoved = false;
@@ -180,7 +188,12 @@ struct MyApp : App, AlloSphereAudioSpatializer {
       space.move(i, system[i].position.x * space.dim(),
                  system[i].position.y * space.dim(), 0);
 
-    radius = space.maxRadius() * 0.02;
+    searchRadius = 0.01;
+
+    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
+      source[i].nearClip(searchRadius * 0.1);
+      source[i].farClip(searchRadius);
+    }
 
     initWindow(Window::Dim(800, 800));
 
@@ -207,22 +220,28 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
     HashSpace::Query qmany(MAXIMUM_NUMBER_OF_SOUND_SOURCES);
     qmany.clear();
-    int results = qmany(space, local * space.dim(), radius);
-
-    if (mouseMoved) {
-      mouseMoved = false;
-      if (results) cout << "mouse:" << mouse << '\n';
-      for (int i = 0; i < results; i++) {
-        cout << "  " << system[qmany[i]->id].name << " :: ";
-        system[qmany[i]->id].position.print();
-        cout << "\n";
-      }
-    }
+    int results =
+        qmany(space, local * space.dim(), searchRadius * space.maxRadius());
 
     for (int i = 0; i < results; i++)
       source[i].pose(Pose(system[qmany[i]->id].position, Quatf()));
     for (int i = results; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
       source[i].pose(Pose(local, Quatf()));
+
+    if (mouseMoved) {
+      mouseMoved = false;
+      if (results) cout << "mouse: " << mouse << '\n';
+      for (int i = 0; i < results; i++) {
+        cout << "  " << system[qmany[i]->id].name << " :: ";
+        system[qmany[i]->id].position.print();
+        cout << ' ' << (local - system[qmany[i]->id].position).mag();
+        // cout << source[i].
+        cout << "\n";
+      }
+    }
+
+    // set listener pose and render audio sources
+    listener()->pose(Pose(local, Quatf()));
 
     while (io()) {
 
@@ -236,8 +255,6 @@ struct MyApp : App, AlloSphereAudioSpatializer {
         source[i].writeSample(0.0);
     }
 
-    // set listener pose and render audio sources
-    listener()->pose(Pose(local, Quatf()));
     scene()->render(io);
   }
 
@@ -258,22 +275,29 @@ struct MyApp : App, AlloSphereAudioSpatializer {
       g.popMatrix();
     }
 
+    g.pushMatrix(Graphics::MODELVIEW);
+    g.loadIdentity();
+    g.translate(mouse);
+    g.scale(searchRadius);
+    g.draw(ring);
+    g.popMatrix();
+
     g.popMatrix(Graphics::PROJECTION);
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
     switch (k.key()) {
-      case ',':
-        radius -= 0.5;
+      case 's':
+        searchRadius *= 0.9;
         break;
-      case '.':
-        radius += 0.5;
+      case 'S':
+        searchRadius *= 1.1;
         break;
-      case ';':
-        rate -= 0.1;
+      case 'r':
+        rate *= 0.9;
         break;
-      case '\'':
-        rate += 0.1;
+      case 'R':
+        rate *= 1.1;
         break;
     }
   }
@@ -283,7 +307,7 @@ struct MyApp : App, AlloSphereAudioSpatializer {
     float y = (float)m.y() / w.dimensions().h;
     y = 1 - y;
     mouse = Vec3f(x, y, 0);
-    std::cout << "mouse: (" << x << ", " << y << ")\n";
+    // std::cout << "mouse: (" << x << ", " << y << ")\n";
     mouseMoved = true;
   }
 };
