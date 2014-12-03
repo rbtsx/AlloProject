@@ -19,6 +19,9 @@ typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>
 struct DynamicSamplePlayer : GammaSamplePlayerFloatCubicWrap {
   DynamicSamplePlayer() : GammaSamplePlayerFloatCubicWrap() {}
   DynamicSamplePlayer(const DynamicSamplePlayer& other) {}
+  DynamicSamplePlayer& operator=(const DynamicSamplePlayer& other) {
+    return *this;
+  }
 };
 
 struct StarSystem {
@@ -62,9 +65,13 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
   Box box;
 
+  double gain;
+
   SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
 
   MyApp() : space(8, 4000), filter(9000) {
+
+    gain = 0;
 
     int N = 20;
     ring.primitive(Graphics::LINE_STRIP);
@@ -248,7 +255,7 @@ struct MyApp : App, AlloSphereAudioSpatializer {
       for (int i = 0; i < results; i++) {
         float f = system[qmany[i]->id].player();
         double d = isnan(f) ? 0.0 : (double)f;
-        source[i].writeSample(d);
+        source[i].writeSample(d * gain);
       }
 
       for (int i = results; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
@@ -298,6 +305,16 @@ struct MyApp : App, AlloSphereAudioSpatializer {
         break;
       case 'R':
         rate *= 1.1;
+        break;
+      case '-':
+        gain -= 0.001;
+        if (gain < 0) gain = 0;
+        cout << "gain:" << gain << endl;
+        break;
+      case '+':
+        gain += 0.001;
+        if (gain > 0.5) gain = 0.5;
+        cout << "gain:" << gain << endl;
         break;
     }
   }
