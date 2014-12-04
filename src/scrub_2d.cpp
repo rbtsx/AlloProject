@@ -11,7 +11,7 @@ using namespace al;
 #include <map>
 using namespace std;
 
-#define MAXIMUM_NUMBER_OF_SOUND_SOURCES (5)
+#define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
 
 typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>
     GammaSamplePlayerFloatCubicWrap;
@@ -19,6 +19,8 @@ typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>
 struct DynamicSamplePlayer : GammaSamplePlayerFloatCubicWrap {
   DynamicSamplePlayer() : GammaSamplePlayerFloatCubicWrap() {}
   DynamicSamplePlayer(const DynamicSamplePlayer& other) {}
+
+  // need this for some old version of gcc
   DynamicSamplePlayer& operator=(const DynamicSamplePlayer& other) {
     return *this;
   }
@@ -67,11 +69,10 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
   double gain;
 
+  unsigned soundSourcesCount;
   SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
 
   MyApp() : space(8, 4000), filter(9000) {
-
-    gain = 0;
 
     int N = 20;
     ring.primitive(Graphics::LINE_STRIP);
@@ -195,27 +196,27 @@ struct MyApp : App, AlloSphereAudioSpatializer {
       space.move(i, system[i].position.x * space.dim(),
                  system[i].position.y * space.dim(), 0);
 
-    searchRadius = 0.01;
-
-    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      source[i].nearClip(searchRadius * 0.1);
-      source[i].farClip(searchRadius);
-    }
-
     initWindow(Window::Dim(800, 800));
+
+    //
+    // AUDIO
+    //
 
     // init audio and ambisonic spatialization
     AlloSphereAudioSpatializer::initAudio();
     AlloSphereAudioSpatializer::initSpatialization();
     gam::Sync::master().spu(AlloSphereAudioSpatializer::audioIO().fps());
 
-    // add our sound source to the audio scene
-    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
-      scene()->addSource(source[i]);
+    soundSourcesCount = 5;
+    gain = 0;
+    searchRadius = 0.01;
 
-    // use this for smoother spatialization and dopler effect
-    // good for fast moving sources or listener
-    // computationally expensive!!
+    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
+      source[i].nearClip(searchRadius * 0.01);
+      source[i].farClip(searchRadius);
+      scene()->addSource(source[i]);
+    }
+
     scene()->usePerSampleProcessing(true);
   }
 
@@ -225,10 +226,10 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
     Vec3f local = mouse;
 
-    HashSpace::Query qmany(MAXIMUM_NUMBER_OF_SOUND_SOURCES);
+    HashSpace::Query qmany(soundSourcesCount);
     qmany.clear();
     int results =
-        qmany(space, local * space.dim(), searchRadius * space.maxRadius());
+        qmany(space, local * space.dim(), searchRadius * space.dim());
 
     for (int i = 0; i < results; i++)
       source[i].pose(Pose(system[qmany[i]->id].position, Quatf()));
@@ -237,12 +238,17 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
     if (mouseMoved) {
       mouseMoved = false;
-      if (results) cout << "mouse: " << mouse << '\n';
+
+      //cout << "DEBUG: " << local << ' ' << space.dim() << ' ' << searchRadius << ' ' << space.maxRadius() << endl;
+
+      if (results) {
+        cout << "found " << results << " systems within " << searchRadius
+             << " of " << local << endl;
+      }
       for (int i = 0; i < results; i++) {
         cout << "  " << system[qmany[i]->id].name << " :: ";
         system[qmany[i]->id].position.print();
         cout << ' ' << (local - system[qmany[i]->id].position).mag();
-        // cout << source[i].
         cout << "\n";
       }
     }
@@ -294,27 +300,63 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
     switch (k.key()) {
-      case 's':
-        searchRadius *= 0.9;
+
+      case 'p':
+        scene()->usePerSampleProcessing(false);
+        cout << "using block processing" << endl;
         break;
-      case 'S':
-        searchRadius *= 1.1;
+
+      case 'P':
+        scene()->usePerSampleProcessing(true);
+        cout << "using per-sample processing" << endl;
         break;
-      case 'r':
+
+      case 'f':
         rate *= 0.9;
         break;
-      case 'R':
+      case 'F':
         rate *= 1.1;
         break;
+
       case '-':
-        gain -= 0.001;
+        gain -= 0.001 * (k.alt() ? 10.0 : 1.0);
         if (gain < 0) gain = 0;
         cout << "gain:" << gain << endl;
         break;
       case '+':
-        gain += 0.001;
-        if (gain > 0.5) gain = 0.5;
+        gain += 0.001 * (k.alt() ? 10.0 : 1.0);
+        if (gain > 1.0) gain = 1.0;
         cout << "gain:" << gain << endl;
+        break;
+
+      case 'r':
+        searchRadius *= 0.9;
+        for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
+          source[i].nearClip(searchRadius * 0.01);
+          source[i].farClip(searchRadius);
+        }
+        break;
+
+      case 'R':
+        searchRadius *= 1.1;
+        for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
+          source[i].nearClip(searchRadius * 0.01);
+          source[i].farClip(searchRadius);
+        }
+        break;
+
+      case ']':
+        if (soundSourcesCount == MAXIMUM_NUMBER_OF_SOUND_SOURCES - 1)
+          ;
+        else
+          soundSourcesCount++;
+        break;
+
+      case '[':
+        if (soundSourcesCount == 1)
+          ;
+        else
+          soundSourcesCount--;
         break;
     }
   }
