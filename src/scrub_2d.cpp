@@ -51,7 +51,8 @@ ostream& operator<<(ostream& out, const Box& b) {
   return out;
 }
 
-struct MyApp : App, AlloSphereAudioSpatializer {
+struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
+  Window* w;
   Reverb<float> reverb;
   gam::Biquad<> filter;
   vector<StarSystem> system;
@@ -73,7 +74,6 @@ struct MyApp : App, AlloSphereAudioSpatializer {
   SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
 
   MyApp() : space(8, 4000), filter(9000) {
-
     int N = 20;
     ring.primitive(Graphics::LINE_STRIP);
     for (int i = 0; i < N + 1; ++i) {
@@ -149,7 +149,6 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
     int bytes = 0;
     for (int i = 0; i < result.gl_pathc; ++i) {
-
       // load the lightcurve .wav into a sample player
       //
       if (!system[i].player.load(result.gl_pathv[i])) {
@@ -196,7 +195,7 @@ struct MyApp : App, AlloSphereAudioSpatializer {
       space.move(i, system[i].position.x * space.dim(),
                  system[i].position.y * space.dim(), 0);
 
-    initWindow(Window::Dim(800, 800));
+    w = initWindow(Window::Dim(800, 800));
 
     //
     // AUDIO
@@ -208,7 +207,7 @@ struct MyApp : App, AlloSphereAudioSpatializer {
     gam::Sync::master().spu(AlloSphereAudioSpatializer::audioIO().fps());
 
     soundSourcesCount = 5;
-    gain = 0;
+    gain = 0.95;
     searchRadius = 0.01;
 
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
@@ -218,18 +217,41 @@ struct MyApp : App, AlloSphereAudioSpatializer {
     }
 
     scene()->usePerSampleProcessing(true);
+
+    // OSC
+    App::oscRecv().open(8765, "", 0.1, Socket::UDP | Socket::DGRAM);
+    App::oscRecv().handler(*this);
+    App::oscRecv().start();
+
+    //App::oscSend().open(9000, "localhost", 0.1, Socket::UDP | Socket::DGRAM);
+    App::oscSend().open(8765, "bossanova", 0.1, Socket::UDP | Socket::DGRAM);
+  }
+
+  virtual void onMessage(osc::Message& m) {
+    if (m.addressPattern() == "/mouse") {
+      float x, y;
+      m >> x >> y;
+
+      if (x < 0) x = 0;
+      if (y < 0) y = 0;
+      if (x > 1) x = 1;
+      if (y > 1) y = 1;
+
+      mouse = Vec3f(x, y, 0);
+      mouseMoved = true;
+    } else {
+      cout << "Unknown OSC message" << endl;
+    }
   }
 
   virtual void onSound(AudioIOData& io) {
-
     for (int i = 0; i < system.size(); ++i) system[i].player.rate(rate);
 
     Vec3f local = mouse;
 
     HashSpace::Query qmany(soundSourcesCount);
     qmany.clear();
-    int results =
-        qmany(space, local * space.dim(), searchRadius * space.dim());
+    int results = qmany(space, local * space.dim(), searchRadius * space.dim());
 
     for (int i = 0; i < results; i++)
       source[i].pose(Pose(system[qmany[i]->id].position, Quatf()));
@@ -239,7 +261,8 @@ struct MyApp : App, AlloSphereAudioSpatializer {
     if (mouseMoved) {
       mouseMoved = false;
 
-      //cout << "DEBUG: " << local << ' ' << space.dim() << ' ' << searchRadius << ' ' << space.maxRadius() << endl;
+      // cout << "DEBUG: " << local << ' ' << space.dim() << ' ' << searchRadius
+      // << ' ' << space.maxRadius() << endl;
 
       if (results) {
         cout << "found " << results << " systems within " << searchRadius
@@ -257,7 +280,6 @@ struct MyApp : App, AlloSphereAudioSpatializer {
     listener()->pose(Pose(local, Quatf()));
 
     while (io()) {
-
       for (int i = 0; i < results; i++) {
         float f = system[qmany[i]->id].player();
         double d = isnan(f) ? 0.0 : (double)f;
@@ -278,6 +300,7 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
     g.pushMatrix(Graphics::PROJECTION);
+    // if (w->fullscreen())
     g.loadMatrix(Matrix4f::ortho2D(0, 1, 0, 1));
 
     for (int i = 0; i < system.size(); ++i) {
@@ -300,7 +323,6 @@ struct MyApp : App, AlloSphereAudioSpatializer {
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
     switch (k.key()) {
-
       case 'p':
         scene()->usePerSampleProcessing(false);
         cout << "using block processing" << endl;
@@ -365,9 +387,16 @@ struct MyApp : App, AlloSphereAudioSpatializer {
     float x = (float)m.x() / w.dimensions().w;
     float y = (float)m.y() / w.dimensions().h;
     y = 1 - y;
+
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > 1) x = 1;
+    if (y > 1) y = 1;
+    // cout << x << ", " << y << endl;
     mouse = Vec3f(x, y, 0);
     // std::cout << "mouse: (" << x << ", " << y << ")\n";
     mouseMoved = true;
+    App::oscSend().send("/mouse", x, y);
   }
 };
 
