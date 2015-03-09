@@ -224,7 +224,7 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
     App::oscRecv().start();
 
     //App::oscSend().open(9000, "localhost", 0.1, Socket::UDP | Socket::DGRAM);
-    App::oscSend().open(8765, "bossanova", 0.1, Socket::UDP | Socket::DGRAM);
+    App::oscSend().open(8765, "192.168.0.3", 0.1, Socket::UDP | Socket::DGRAM);
   }
 
   virtual void onMessage(osc::Message& m) {
