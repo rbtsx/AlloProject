@@ -2,6 +2,7 @@
 #include "allocore/spatial/al_HashSpace.hpp"
 #include "alloutil/al_AlloSphereAudioSpatializer.hpp"
 using namespace al;
+
 #include "Gamma/SamplePlayer.h"
 #include "Gamma/Filter.h"
 #include <vector>
@@ -216,7 +217,8 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
       scene()->addSource(source[i]);
     }
 
-    scene()->usePerSampleProcessing(true);
+    scene()->usePerSampleProcessing(false);
+    // breaks sound! scene()->usePerSampleProcessing(true);
 
     // OSC
     App::oscRecv().open(8765, "", 0.1, Socket::UDP | Socket::DGRAM);
@@ -224,7 +226,7 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
     App::oscRecv().start();
 
     //App::oscSend().open(9000, "localhost", 0.1, Socket::UDP | Socket::DGRAM);
-    App::oscSend().open(8765, "192.168.0.3", 0.1, Socket::UDP | Socket::DGRAM);
+    App::oscSend().open(8765, "192.168.0.30", 0.1, Socket::UDP | Socket::DGRAM);
   }
 
   virtual void onMessage(osc::Message& m) {
