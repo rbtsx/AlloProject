@@ -6,7 +6,6 @@ using namespace al;
 #include "Gamma/SamplePlayer.h"
 #include "Gamma/Filter.h"
 #include <vector>
-#include <glob.h>
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -101,9 +100,18 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
 
     point.vertex(0, 0, 0);
 
+    SearchPaths searchPaths;
+    searchPaths.addSearchPath("/wav");
+    searchPaths.addSearchPath("./wav");
+    searchPaths.addSearchPath("..");
+    searchPaths.print();
+    //searchPaths.addSearchPath("../");
+    //searchPaths.addSearchPath("../");
     map<string, Vec3f> where;
     char s[100];
-    ifstream foo("txt/map.txt");
+    FileList fl = searchPaths.glob(".*?map.txt");
+    if (fl.count() <= 0) exit(1);
+    ifstream foo(fl[0].filepath());
     while (!foo.eof()) {
       // 000757450|84|73.4470|46.2242|291.1376|36.5774
       foo.getline(s, sizeof(s));
@@ -138,21 +146,26 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
 
     cout << "bounding box is " << box << endl;
 
+    fl = searchPaths.glob(".*?_fixed\.wav");
+    if (fl.count() <= 0) exit(1);
+
     // use a glob to find all the .wav files for loading
     //
-    glob_t result;
-    glob("wav/*_fixed.wav", 0, 0, &result);
+    //glob_t result;
+    //glob("wav/*_fixed.wav", 0, 0, &result);
+
 
     // allocate space for each lightcurve (sample player + name)
     //
-    system.resize(result.gl_pathc);
+    system.resize(fl.count());
     cout << "loading " << system.size() << " star systems\n";
 
     int bytes = 0;
-    for (int i = 0; i < result.gl_pathc; ++i) {
+    for (int i = 0; i < fl.count(); ++i) {
       // load the lightcurve .wav into a sample player
       //
-      if (!system[i].player.load(result.gl_pathv[i])) {
+
+      if (!system[i].player.load(fl[i].filepath().c_str())) {
         cout << "FAIL!\n";
         exit(-1);
       }
@@ -164,9 +177,10 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
       //
       char buffer[10];
       buffer[9] = '\0';
-      strncpy(buffer, result.gl_pathv[i] + 4, 9);
+      strncpy(buffer, fl[i].file().c_str(), 9);
       // cout << buffer << endl;
       system[i].name = buffer;
+      cout << buffer << endl;
 
       map<string, Vec3f>::iterator it = where.find(buffer);
       if (it == where.end()) {
