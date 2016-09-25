@@ -51,6 +51,8 @@ ostream& operator<<(ostream& out, const Box& b) {
   return out;
 }
 
+SearchPaths searchPaths;
+
 struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
   Window* w;
   Reverb<float> reverb;
@@ -100,17 +102,13 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
 
     point.vertex(0, 0, 0);
 
-    SearchPaths searchPaths;
-    searchPaths.addSearchPath("/wav");
-    searchPaths.addSearchPath("./wav");
-    searchPaths.addSearchPath("..");
-    searchPaths.print();
-    //searchPaths.addSearchPath("../");
-    //searchPaths.addSearchPath("../");
     map<string, Vec3f> where;
     char s[100];
     FileList fl = searchPaths.glob(".*?map.txt");
-    if (fl.count() <= 0) exit(1);
+    if (fl.count() <= 0) {
+      cout << "Error! I count not find the map file." << endl;
+      exit(1);
+    }
     ifstream foo(fl[0].filepath());
     while (!foo.eof()) {
       // 000757450|84|73.4470|46.2242|291.1376|36.5774
@@ -147,13 +145,10 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
     cout << "bounding box is " << box << endl;
 
     fl = searchPaths.glob(".*?_fixed\.wav");
-    if (fl.count() <= 0) exit(1);
-
-    // use a glob to find all the .wav files for loading
-    //
-    //glob_t result;
-    //glob("wav/*_fixed.wav", 0, 0, &result);
-
+    if (fl.count() <= 0) {
+      cout << "Error! I could not find the sound files." << endl;
+      exit(1);
+    }
 
     // allocate space for each lightcurve (sample player + name)
     //
@@ -416,7 +411,12 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
   }
 };
 
-int main() {
+int main(int argc, char* argv[]) {
+  for (int i = 1; i < argc; i++)
+    searchPaths.addSearchPath(argv[i]);
+  cout << "Looking for map and data here..." << endl;
+  searchPaths.print();
+
   MyApp app;
   app.AlloSphereAudioSpatializer::audioIO().start();
   app.start();
