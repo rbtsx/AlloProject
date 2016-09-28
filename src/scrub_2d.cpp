@@ -146,7 +146,7 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
 
     map<string, Vec3f> where;
     char s[100];
-    FileList fl = searchPaths.glob(".*?map_just_kois.txt");
+    FileList fl = searchPaths.glob(".*?txt/map.txt");
     if (fl.count() <= 0) {
       cout << "Error! I could not find the map file." << endl;
       exit(1);
@@ -446,8 +446,13 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
 };
 
 int main(int argc, char* argv[]) {
+  if (argc == 1) {
+    searchPaths.addSearchPath("../");
+  }
+  else
   for (int i = 1; i < argc; i++)
     searchPaths.addSearchPath(argv[i]);
+
   cout << "Looking for map and data here..." << endl;
   searchPaths.print();
 
