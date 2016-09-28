@@ -12,12 +12,12 @@ using namespace al;
 using namespace std;
 
 #define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
-#define BLOCK_SIZE (256)
-#define CACHE_SIZE (65) // in pixels
+#define BLOCK_SIZE (1024)
+#define CACHE_SIZE (80) // in pixels
 
 SearchPaths searchPaths;
 
-HashSpace space(5, 190000);
+HashSpace space(5, 190000); // 5++?
 
 // SampleLooper
 //
@@ -113,9 +113,9 @@ struct MyApp : App, al::osc::PacketHandler {
     listener = scene.createListener(panner);
     listener->compile();
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      //source[i].nearClip(1.0);
-      //source[i].farClip(50);
-      //source[i].dopplerType(DOPPLER_NONE);
+      source[i].nearClip(1.0);
+      source[i].farClip(CACHE_SIZE);
+      source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
       scene.addSource(source[i]);
     }
     panner->print();
@@ -147,7 +147,7 @@ struct MyApp : App, al::osc::PacketHandler {
     i.load(filePath.filepath());
     fffi.allocate(i.array());
 
-    FileList fileList = searchPaths.glob(".*?map.txt");
+    FileList fileList = searchPaths.glob(".*?wav_sonify/map.txt");
     assert(fileList.count() == 1);
     load(system, fileList[0].filepath());
     cout << system.size() << " systems loaded from map file" << endl;
@@ -183,6 +183,9 @@ struct MyApp : App, al::osc::PacketHandler {
   virtual void onSound(AudioIOData& io) {
     gam::Sync::master().spu(audioIO().fps());
 
+    float x = nav().pos().x;
+    float y = nav().pos().y;
+
     // make a copy of where we are..
     //
     Vec3d position(x, y, 0);
@@ -197,6 +200,18 @@ struct MyApp : App, al::osc::PacketHandler {
     int results = qmany(space,
       Vec3d(unit_x, unit_y, 0) * space.dim(),
       unit_r * space.dim());
+
+    // send neighbors
+    //
+    char buffer[20];
+    oscSend().beginMessage("/knn");
+    oscSend() << buffer;
+    for (int i = 0; i < results; i++) {
+      sprintf(buffer, "%09d", system[qmany[i]->id].kic);
+      oscSend() << buffer;
+    }
+    oscSend().endMessage();
+    oscSend().send();
 
     // set sound source positions
     // calculate distances for attenuation
@@ -229,7 +244,9 @@ struct MyApp : App, al::osc::PacketHandler {
     for (int k = 0; k < numFrames; k++) {
       for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
         if (i < results) {
-          float f = system[qmany[i]->id].player();
+          float f = 0;
+          if (system[qmany[i]->id].player.size() > 1)
+            f = system[qmany[i]->id].player();
           double d = isnan(f) ? 0.0 : (double)f;
           source[i].writeSample(d * sourceGain[i]);
         }
@@ -287,7 +304,7 @@ struct MyApp : App, al::osc::PacketHandler {
       c.color(HSV(0.0, 1, 1));
     }
     g.draw(c);
-    g.translate(x, y, 1);
+    g.translate(nav().pos().x, nav().pos().y, 1);
     g.scale(r);
     g.draw(ring);
     g.scale(CACHE_SIZE/r);
