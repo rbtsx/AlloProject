@@ -12,18 +12,12 @@ using namespace al;
 using namespace std;
 
 #define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
-#define BLOCK_SIZE (1024)
+#define BLOCK_SIZE (256)
 #define CACHE_SIZE (65) // in pixels
 
 SearchPaths searchPaths;
 
-SpeakerLayout speakerLayout = HeadsetSpeakerLayout();
-// layout, dimension and order
-AmbisonicsSpatializer* panner = new AmbisonicsSpatializer(speakerLayout, 2, 1);
-AudioScene scene(BLOCK_SIZE);
-Listener* listener;
-
-HashSpace space(5, 220100);
+HashSpace space(5, 190000);
 
 // SampleLooper
 //
@@ -52,7 +46,8 @@ struct StarSystem {
 
 bool load(StarSystem& system) {
   char fileName[100];
-  sprintf(fileName, "%09d_fixed.wav", system.kic);
+  sprintf(fileName, "%09d.g.bin.wav", system.kic);
+  //sprintf(fileName, "%09d_fixed.wav", system.kic);
   string filePath = searchPaths.find(fileName).filepath();
   if (filePath.empty()) {
     cout << fileName << " was not found in the path"<< endl;
@@ -70,7 +65,8 @@ bool load(StarSystem& system) {
 
 void unload(StarSystem& system) {
   char fileName[100];
-  sprintf(fileName, "%09d_fixed.wav", system.kic);
+  //sprintf(fileName, "%09d_fixed.wav", system.kic);
+  sprintf(fileName, "%09d.g.bin.wav", system.kic);
   cout << "Unloaded " << fileName << " from memory!"<< endl;
   system.player.clear();
 }
@@ -78,6 +74,10 @@ void unload(StarSystem& system) {
 void load(vector<StarSystem>& system, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
+
+  SpeakerLayout* speakerLayout;
+  AmbisonicsSpatializer* panner;
+  Listener* listener;
 
   Texture fffi;
   Mesh ring;
@@ -102,14 +102,25 @@ struct MyApp : App, al::osc::PacketHandler {
       n.push_back(qmany[i]->id);
   }
 
-  MyApp() {
+  AudioScene scene;
+
+  MyApp() : scene(BLOCK_SIZE) {
+    speakerLayout = new SpeakerLayout();
+    speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
+    speakerLayout->addSpeaker(Speaker(1, -45, 0, 1.0, 1.0));
+    panner = new AmbisonicsSpatializer(*speakerLayout, 3, 3);
+    //panner = new AmbisonicsSpatializer(speakerLayout, 2, 1);
     listener = scene.createListener(panner);
+    listener->compile();
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      source[i].nearClip(1.0);
-      source[i].farClip(50);
+      //source[i].nearClip(1.0);
+      //source[i].farClip(50);
+      //source[i].dopplerType(DOPPLER_NONE);
       scene.addSource(source[i]);
     }
+    panner->print();
     scene.usePerSampleProcessing(false);
+    //scene.usePerSampleProcessing(true);
 
     // OSC Configuration
     //
@@ -162,21 +173,19 @@ struct MyApp : App, al::osc::PacketHandler {
     for (int i : cache)
       load(system[i]);
 
+    for (int i = 0; i < system.size(); ++i)
+      system[i].player.rate(0.75);
+
     initWindow(Window::Dim(800, 800));
     initAudio(44100, BLOCK_SIZE);
   }
 
   virtual void onSound(AudioIOData& io) {
-    // for (int i = 0; i < system.size(); ++i)
-    //   system[i].player.rate(rate);
+    gam::Sync::master().spu(audioIO().fps());
 
     // make a copy of where we are..
     //
     Vec3d position(x, y, 0);
-
-    // put the listener there..
-    //
-    listener->pose(Pose(position, Quatd()));
 
     // get a list of neighbors
     //
@@ -189,35 +198,39 @@ struct MyApp : App, al::osc::PacketHandler {
       Vec3d(unit_x, unit_y, 0) * space.dim(),
       unit_r * space.dim());
 
-    if (results) {
-      // set sound source positions
-      // calculate distances for attenuation
-      //
-      for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-        if (i < results) {
-          Vec3f p(system[qmany[i]->id].x, system[qmany[i]->id].y, 0);
-          source[i].pose(Pose(p, Quatd()));
-          sourceGain[i] = 1.0f / (p - position).mag();
-        }
-        else {
-          sourceGain[i] = 0;
-        }
+    // set sound source positions
+    // calculate distances for attenuation
+    //
+    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
+      if (i < results) {
+        Vec3f p(system[qmany[i]->id].x, system[qmany[i]->id].y, 0);
+        //source[i].pose(Pose(p, Quatd()));
+        source[i].pos(p.x, p.y, 0);
+        sourceGain[i] = 1.0f / (p - position).mag();
       }
-
-      /*
-      cout << ">--(" << results << ")--------------<" << endl;
-      for (int i = 0; i < results; i++) {
-        cout << sourceGain[i] << " ";
-        system[qmany[i]->id].print();
+      else {
+        sourceGain[i] = 0;
       }
-      */
-
     }
 
-    while (io()) {
+    if (results)
+      cout << ">--(" << results << ")--------------<" << endl;
+    for (int i = 0; i < results; i++) {
+      cout << sourceGain[i] << " ";
+      system[qmany[i]->id].print();
+    }
+
+    // put the listener there..
+    //
+    listener->pose(Pose(position, Quatd()));
+
+//src.pos(x, 0, 0);
+
+    int numFrames = io.framesPerBuffer();
+    for (int k = 0; k < numFrames; k++) {
       for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
         if (i < results) {
-          float f = 0 ; //system[qmany[i]->id].player();
+          float f = 0; // system[qmany[i]->id].player();
           double d = isnan(f) ? 0.0 : (double)f;
           source[i].writeSample(d * sourceGain[i]);
         }
