@@ -21,7 +21,7 @@ HashSpace space(5, 190000);
 
 // SampleLooper
 //
-typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>/*<<<*/
+typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>
     GammaSamplePlayerFloatCubicWrap;
 
 struct DynamicSamplePlayer : GammaSamplePlayerFloatCubicWrap {
@@ -223,14 +223,13 @@ struct MyApp : App, al::osc::PacketHandler {
     // put the listener there..
     //
     listener->pose(Pose(position, Quatd()));
-
-//src.pos(x, 0, 0);
+    // ?listener->pos(position.x, position.y, 0);
 
     int numFrames = io.framesPerBuffer();
     for (int k = 0; k < numFrames; k++) {
       for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
         if (i < results) {
-          float f = 0; // system[qmany[i]->id].player();
+          float f = system[qmany[i]->id].player();
           double d = isnan(f) ? 0.0 : (double)f;
           source[i].writeSample(d * sourceGain[i]);
         }
