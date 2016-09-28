@@ -26,7 +26,7 @@ void readOldMapFileLine(char* p, int& koi, float& ra, float& dec) {
   dec = atof(p);
 }
 
-void readMapFileLine(char* line, int& koi, float& x, float& y, float& f) {
+void readMapFileLine(char* p, int& koi, float& x, float& y, float& f) {
 // cell 0: kic
   koi = atoi(p); assert (koi != 0);
   while (*p != '|') p++; p++;
@@ -146,7 +146,7 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
 
     map<string, Vec3f> where;
     char s[100];
-    FileList fl = searchPaths.glob(".*?map.txt");
+    FileList fl = searchPaths.glob(".*?map_just_kois.txt");
     if (fl.count() <= 0) {
       cout << "Error! I could not find the map file." << endl;
       exit(1);
