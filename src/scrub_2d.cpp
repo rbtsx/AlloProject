@@ -9,9 +9,51 @@ using namespace al;
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <cassert>
 using namespace std;
 
 #define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
+
+void readOldMapFileLine(char* p, int& koi, float& ra, float& dec) {
+  koi = atoi(p);
+  assert (koi != 0);
+  while (*p != '|') p++; p++;
+  while (*p != '|') p++; p++;
+  while (*p != '|') p++; p++;
+  while (*p != '|') p++; p++;
+  ra = atof(p);
+  while (*p != '|') p++; p++;
+  dec = atof(p);
+}
+
+void readMapFileLine(char* line, int& koi, float& x, float& y, float& f) {
+// cell 0: kic
+  koi = atoi(p); assert (koi != 0);
+  while (*p != '|') p++; p++;
+// cell 1: ch
+  // IGNORE
+  while (*p != '|') p++; p++;
+// cell 2: x-coord in channel
+  // IGNORE
+  while (*p != '|') p++; p++;
+// cell 3: y-coord in channel
+  // IGNORE
+  while (*p != '|') p++; p++;
+// cell 4: x-coord in FFFI
+  x = atof(p);
+  while (*p != '|') p++; p++;
+// cell 5: y-coord in FFFI
+  y = atof(p);
+  while (*p != '|') p++; p++;
+// cell 6: ra
+  // IGNORE
+  while (*p != '|') p++; p++;
+// cell 7: dec
+  // IGNORE
+  while (*p != '|') p++; p++;
+// cell 8: mean amplitude
+  f = atof(p);
+}
 
 typedef gam::SamplePlayer<float, gam::ipl::Cubic, gam::tap::Wrap>
     GammaSamplePlayerFloatCubicWrap;
@@ -106,28 +148,20 @@ struct MyApp : App, AlloSphereAudioSpatializer, al::osc::PacketHandler {
     char s[100];
     FileList fl = searchPaths.glob(".*?map.txt");
     if (fl.count() <= 0) {
-      cout << "Error! I count not find the map file." << endl;
+      cout << "Error! I could not find the map file." << endl;
       exit(1);
     }
     ifstream foo(fl[0].filepath());
     while (!foo.eof()) {
-      // 000757450|84|73.4470|46.2242|291.1376|36.5774
+// format    kic   |ch|                                    |   ra   |  dec
+//  old   000757450|84|73.4470|46.2242|                     291.1376|36.5774
+//  new   000757450|32|73.4657|46.2748|5914.7256|-3431.5342|291.1376|36.5774|11671.6854
+//                        ?       ?        ?          ?                          ?
       foo.getline(s, sizeof(s));
       char* p = s;
-      int koi = atoi(p);
-      if (koi == 0) break;
-      while (*p != '|') p++;
-      p++;
-      while (*p != '|') p++;
-      p++;
-      while (*p != '|') p++;
-      p++;
-      while (*p != '|') p++;
-      p++;
-      float ra = atof(p);
-      while (*p != '|') p++;
-      p++;
-      float dec = atof(p);
+      int koi;
+      float ra, dec;
+      readOldMapFileLine(s, koi, ra, dec);
 
       char buffer[20];
       sprintf(buffer, "%09d", koi);
