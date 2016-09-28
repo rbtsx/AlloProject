@@ -17,6 +17,8 @@ using namespace std;
 
 SearchPaths searchPaths;
 
+vector<string> path;
+
 HashSpace space(5, 190000); // 5++?
 
 // SampleLooper
@@ -44,16 +46,22 @@ struct StarSystem {
   }
 };
 
-bool load(StarSystem& system) {
-  char fileName[100];
-  sprintf(fileName, "%09d.g.bin.wav", system.kic);
-  //sprintf(fileName, "%09d_fixed.wav", system.kic);
-  string filePath = searchPaths.find(fileName).filepath();
-  if (filePath.empty()) {
-    cout << fileName << " was not found in the path"<< endl;
-    return false;
+string findPath(string fileName) {
+  for (string d : path) {
+    d += "/";
+    cout << "Trying: " << d + fileName << endl;
+    if (File::exists(d + fileName))
+      return d + fileName;
   }
+  cout << "Failed to find critical file: " << fileName << endl; 
+  exit(10);
+  return string("Does not exist!");
+}
 
+bool load(StarSystem& system) {
+  char fileName[200];
+  sprintf(fileName, "wav_sonify/%09d.g.bin.wav", system.kic);
+  string filePath = findPath(fileName);
   if (system.player.load(filePath.c_str())) {
     cout << "Loaded " << fileName << " into memory!"<< endl;
     return true;
@@ -64,9 +72,8 @@ bool load(StarSystem& system) {
 }
 
 void unload(StarSystem& system) {
-  char fileName[100];
-  //sprintf(fileName, "%09d_fixed.wav", system.kic);
-  sprintf(fileName, "%09d.g.bin.wav", system.kic);
+  char fileName[200];
+  sprintf(fileName, "wav_sonify/%09d.g.bin.wav", system.kic);
   cout << "Unloaded " << fileName << " from memory!"<< endl;
   system.player.clear();
 }
@@ -79,7 +86,7 @@ struct MyApp : App, al::osc::PacketHandler {
   AmbisonicsSpatializer* panner;
   Listener* listener;
 
-  Texture fffi;
+  //Texture fffi;
   Mesh ring;
   Mesh field;
   vector<StarSystem> system;
@@ -140,16 +147,16 @@ struct MyApp : App, al::osc::PacketHandler {
       //ring.color(0, 0, 0);
     }
 
-    FilePath filePath = searchPaths.find("testFFFI.png");
-    //FilePath filePath = searchPaths.find("FFFI.tif");
-    //FilePath filePath = searchPaths.find("printedFFFI.png");
-    Image i;
-    i.load(filePath.filepath());
-    fffi.allocate(i.array());
+    //FilePath filePath = searchPaths.find("testFFFI.png");
+    ////FilePath filePath = searchPaths.find("FFFI.tif");
+    ////FilePath filePath = searchPaths.find("printedFFFI.png");
+    //Image i;
+    //i.load(filePath.filepath());
+    //fffi.allocate(i.array());
 
-    FileList fileList = searchPaths.glob(".*?wav_sonify/map.txt");
-    assert(fileList.count() == 1);
-    load(system, fileList[0].filepath());
+    string filePath = findPath("wav_sonify/map.txt");
+    cout << filePath << endl;
+    load(system, filePath);
     cout << system.size() << " systems loaded from map file" << endl;
 
     field.primitive(Graphics::POINTS);
@@ -174,9 +181,9 @@ struct MyApp : App, al::osc::PacketHandler {
       load(system[i]);
 
     for (int i = 0; i < system.size(); ++i)
-      system[i].player.rate(0.75);
+      system[i].player.rate(1.1);
 
-    initWindow(Window::Dim(800, 800));
+    initWindow(Window::Dim(200, 200));
     initAudio(44100, BLOCK_SIZE);
   }
 
@@ -227,13 +234,14 @@ struct MyApp : App, al::osc::PacketHandler {
         sourceGain[i] = 0;
       }
     }
-
+/*
     if (results)
       cout << ">--(" << results << ")--------------<" << endl;
     for (int i = 0; i < results; i++) {
       cout << sourceGain[i] << " ";
       system[qmany[i]->id].print();
     }
+*/
 
     // put the listener there..
     //
@@ -316,20 +324,23 @@ struct MyApp : App, al::osc::PacketHandler {
   virtual void onMessage(osc::Message& m) {
     if (m.addressPattern() == "/xy") {
       m >> x >> y;
-      cout << "Look at (" << x << "," << y << ")" << endl;
+      //cout << "Look at (" << x << "," << y << ")" << endl;
     } else if (m.addressPattern() == "/z") {
       m >> z;
-      cout << "Zoom 'closeness': " << z << endl;
+      //cout << "Zoom 'closeness': " << z << endl;
     } else if (m.addressPattern() == "/r") {
       m >> r;
-      cout << "Search Radius: " << r << endl;
+      //cout << "Search Radius: " << r << endl;
     } else cout << "Unknown OSC message" << endl;
   }
 
 };
 
-int main() {
-  searchPaths.addSearchPath("../");
+int main(int argc, char* argv[]) {
+  path.push_back(".");
+  path.push_back("..");
+  for (int i = 1; i < argc; i++)
+    path.push_back(argv[i]);
   MyApp().start();
 }
 
