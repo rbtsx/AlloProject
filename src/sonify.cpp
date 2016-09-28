@@ -120,7 +120,7 @@ struct MyApp : App, al::osc::PacketHandler {
     listener = scene.createListener(panner);
     listener->compile();
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      source[i].nearClip(1.0);
+      source[i].nearClip(0.1);
       source[i].farClip(CACHE_SIZE);
       source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
       scene.addSource(source[i]);
@@ -228,7 +228,7 @@ struct MyApp : App, al::osc::PacketHandler {
         Vec3f p(system[qmany[i]->id].x, system[qmany[i]->id].y, 0);
         //source[i].pose(Pose(p, Quatd()));
         source[i].pos(p.x, p.y, 0);
-        sourceGain[i] = 1.0f / (p - position).mag();
+        sourceGain[i] = 1.0f / ((p - position).mag() + 1);
       }
       else {
         sourceGain[i] = 0;
