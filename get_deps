@@ -1,0 +1,4 @@
+#!/bin/sh
+
+git clone --depth 1 --branch devel https://github.com/AlloSphere-Research-Group/AlloSystem.git
+git clone --depth 1                https://github.com/AlloSphere-Research-Group/Gamma.git
