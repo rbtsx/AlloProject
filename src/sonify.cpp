@@ -115,6 +115,8 @@ struct MyApp : App, al::osc::PacketHandler {
       n.push_back(qmany[i]->id);
   }
 
+  float zd = 0;
+
   AudioScene scene;
 
   MyApp() : scene(BLOCK_SIZE) {
@@ -278,13 +280,14 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onAnimate(double dt) {
+    z += zd;
     if (go.mag() < 0.03) {
     } else if (go.mag() > 0.1) {
-      x -= go.x * 2;
-      y -= go.y * 2;
+      x -= go.x * 4;
+      y -= go.y * 4;
     } else if (go.mag() > 0.21) {
-      x -= go.x * 8;
-      y -= go.y * 8;
+      x -= go.x * 16;
+      y -= go.y * 16;
     }
     else {
       x -= go.x;
@@ -293,7 +296,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
     nav().quat(Quatf(1, 0, 0, 0));
     if ((Vec3d(x, y, z) - nav().pos()).mag() > 0.1)
-      nav().pos(nav().pos() + (Vec3d(x, y, z) - nav().pos()) * 0.07);
+      nav().pos(nav().pos() + (Vec3d(x, y, z) - nav().pos()) * 0.11);
     else
       nav().pos(Vec3d(x, y, z));
 
@@ -343,6 +346,11 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
+    if (k.key() == ']') zd = -100;
+    if (k.key() == '[') zd = 100;
+  }
+  virtual void onKeyUp(const ViewpointWindow& w, const Keyboard& k) {
+    if (k.key() == '[' || k.key() == ']') zd = 0;
   }
 
   virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
