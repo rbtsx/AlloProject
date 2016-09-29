@@ -100,7 +100,7 @@ struct MyApp : App, al::osc::PacketHandler {
   float sourceGain[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
   vector<unsigned> cache;
 
-  float x = 0, y = 0, z = 2000, r = 20;
+  float x = 0, y = 0, z = 2000, r = 20, cacheSize = 80, near = 1, far = 40;
 
   void findNeighbors(vector<unsigned>& n, float r) {
     HashSpace::Query qmany(100);
@@ -133,7 +133,7 @@ struct MyApp : App, al::osc::PacketHandler {
       source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
       scene.addSource(source[i]);
     }
-    panner->print();
+    //panner->print();
     scene.usePerSampleProcessing(false);
     //scene.usePerSampleProcessing(true);
 
@@ -150,12 +150,12 @@ struct MyApp : App, al::osc::PacketHandler {
 
     // Make a circle
     //
-    int N = 20;
+    int N = 360;
     ring.primitive(Graphics::LINE_STRIP);
     for (int i = 0; i < N + 1; ++i) {
       float theta = M_2PI / N * i;
       ring.vertex(cos(theta), sin(theta), 0);
-      ring.color(1, 1, 1);
+      ring.color(Color(0.5));
       //ring.color(0, 0, 0);
     }
 
@@ -330,6 +330,7 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
+    g.nicest();
     //fffi.quad(g, 12050, 12050, -6025, -6025, -1);
     g.draw(field);
     Mesh c;
