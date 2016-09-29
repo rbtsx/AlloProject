@@ -11,6 +11,9 @@
 using namespace al;
 using namespace std;
 
+//#define DATASET "wav_sonify/"
+#define DATASET "wav_182864/"
+
 #define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
 #define BLOCK_SIZE (1024)
 #define CACHE_SIZE (80) // in pixels
@@ -46,22 +49,24 @@ struct StarSystem {
   }
 };
 
-string findPath(string fileName) {
+string findPath(string fileName, bool critical = true) {
   for (string d : path) {
     d += "/";
     cout << "Trying: " << d + fileName << endl;
     if (File::exists(d + fileName))
       return d + fileName;
   }
-  cout << "Failed to find critical file: " << fileName << endl; 
-  exit(10);
-  return string("Does not exist!");
+  if (critical) {
+    cout << "Failed to find critical file: " << fileName << endl;
+    exit(10);
+  }
+  return string(fileName + " does not exist!");
 }
 
 bool load(StarSystem& system) {
   char fileName[200];
-  sprintf(fileName, "wav_sonify/%09d.g.bin.wav", system.kic);
-  string filePath = findPath(fileName);
+  sprintf(fileName, DATASET "%09d.g.bin.wav", system.kic);
+  string filePath = findPath(fileName, false);
   if (system.player.load(filePath.c_str())) {
     cout << "Loaded " << fileName << " into memory!"<< endl;
     return true;
@@ -73,7 +78,7 @@ bool load(StarSystem& system) {
 
 void unload(StarSystem& system) {
   char fileName[200];
-  sprintf(fileName, "wav_sonify/%09d.g.bin.wav", system.kic);
+  sprintf(fileName, DATASET "%09d.g.bin.wav", system.kic);
   cout << "Unloaded " << fileName << " from memory!"<< endl;
   system.player.clear();
 }
@@ -85,6 +90,7 @@ struct MyApp : App, al::osc::PacketHandler {
   SpeakerLayout* speakerLayout;
   AmbisonicsSpatializer* panner;
   Listener* listener;
+  Vec3f go;
 
   //Texture fffi;
   Mesh ring;
@@ -129,6 +135,10 @@ struct MyApp : App, al::osc::PacketHandler {
     scene.usePerSampleProcessing(false);
     //scene.usePerSampleProcessing(true);
 
+    //
+    navControl().useMouse(false);
+
+
     // OSC Configuration
     //
     App::oscSend().open(13000, "localhost", 0.1, Socket::UDP | Socket::DGRAM);
@@ -154,7 +164,7 @@ struct MyApp : App, al::osc::PacketHandler {
     //i.load(filePath.filepath());
     //fffi.allocate(i.array());
 
-    string filePath = findPath("wav_sonify/map.txt");
+    string filePath = findPath(DATASET "map.txt");
     cout << filePath << endl;
     load(system, filePath);
     cout << system.size() << " systems loaded from map file" << endl;
@@ -268,6 +278,19 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onAnimate(double dt) {
+    if (go.mag() < 0.03) {
+    } else if (go.mag() > 0.1) {
+      x -= go.x * 2;
+      y -= go.y * 2;
+    } else if (go.mag() > 0.21) {
+      x -= go.x * 8;
+      y -= go.y * 8;
+    }
+    else {
+      x -= go.x;
+      y -= go.y;
+    }
+
     nav().quat(Quatf(1, 0, 0, 0));
     if ((Vec3d(x, y, z) - nav().pos()).mag() > 0.1)
       nav().pos(nav().pos() + (Vec3d(x, y, z) - nav().pos()) * 0.07);
@@ -319,7 +342,25 @@ struct MyApp : App, al::osc::PacketHandler {
     g.draw(ring);
   }
 
-  virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) { }
+  virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
+  }
+
+  virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
+    if (m.x() < 0 || m.y() < 0 || m.x() > w.dimensions().w || m.y() > w.dimensions().h) {
+      go.normalize(0);
+      return;
+    }
+
+    float x = (float)m.x() / w.dimensions().w;
+    float y = (float)m.y() / w.dimensions().h;
+    y = 1 - y;
+
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > 1) x = 1;
+    if (y > 1) y = 1;
+    go = Vec3f(0.5, 0.5, 0) - Vec3f(x, y, 0);
+  }
 
   virtual void onMessage(osc::Message& m) {
     if (m.addressPattern() == "/xy") {
