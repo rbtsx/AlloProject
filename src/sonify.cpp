@@ -13,6 +13,9 @@ using namespace std;
 
 //#define DATASET "wav_sonify/"
 #define DATASET "wav_182864/"
+//#define FFFI_FILE "testFFFI.png"
+//#define FFFI_FILE "FFFI.tif"
+#define FFFI_FILE "printedFFFI.png"
 
 #define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
 #define BLOCK_SIZE (1024)
@@ -87,12 +90,15 @@ void load(vector<StarSystem>& system, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
 
+  bool imageFound = false;
+  bool shouldDrawImage = false;
+
   SpeakerLayout* speakerLayout;
   AmbisonicsSpatializer* panner;
   Listener* listener;
   Vec3f go;
 
-  //Texture fffi;
+  Texture fffi;
   Mesh ring;
   Mesh field;
   vector<StarSystem> system;
@@ -159,13 +165,6 @@ struct MyApp : App, al::osc::PacketHandler {
       //ring.color(0, 0, 0);
     }
 
-    //FilePath filePath = searchPaths.find("testFFFI.png");
-    ////FilePath filePath = searchPaths.find("FFFI.tif");
-    ////FilePath filePath = searchPaths.find("printedFFFI.png");
-    //Image i;
-    //i.load(filePath.filepath());
-    //fffi.allocate(i.array());
-
     string filePath = findPath(DATASET "map.txt");
     cout << filePath << endl;
     load(system, filePath);
@@ -194,6 +193,14 @@ struct MyApp : App, al::osc::PacketHandler {
 
     for (int i = 0; i < system.size(); ++i)
       system[i].player.rate(1.1);
+
+    filePath = findPath(FFFI_FILE, false);
+    imageFound = !filePath.empty();
+    if (imageFound) {
+      Image i;
+      i.load(filePath);
+      fffi.allocate(i.array());
+    }
 
     initWindow(Window::Dim(200, 200));
     initAudio(44100, BLOCK_SIZE);
@@ -331,7 +338,10 @@ struct MyApp : App, al::osc::PacketHandler {
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
     g.nicest();
-    //fffi.quad(g, 12050, 12050, -6025, -6025, -1);
+    if (imageFound)
+      if (shouldDrawImage)
+        fffi.quad(g, 12050, 12050, -6025, -6025, -1);
+
     g.draw(field);
     Mesh c;
     for (int i : cache) {
@@ -347,6 +357,7 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
+    if (k.key() == 'f') shouldDrawImage = !shouldDrawImage;
     if (k.key() == ']') zd = -100;
     if (k.key() == '[') zd = 100;
   }
