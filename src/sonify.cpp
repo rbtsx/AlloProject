@@ -109,7 +109,7 @@ struct MyApp : App, al::osc::PacketHandler {
   float x = 0, y = 0, z = 2000, r = 20, cacheSize = 80, near = 1, far = 40;
 
   void findNeighbors(vector<unsigned>& n, float r) {
-    HashSpace::Query qmany(100);
+    HashSpace::Query qmany(512);
     qmany.clear(); // XXX why?
     float unit_x = (x + 6025) / 12050;
     float unit_y = (y + 6025) / 12050;
@@ -173,7 +173,7 @@ struct MyApp : App, al::osc::PacketHandler {
     field.primitive(Graphics::POINTS);
     for (unsigned i = 0; i < system.size(); i++) {
       field.vertex(system[i].x, system[i].y, 1);
-      field.color(HSV(0.5, 1, 1));
+      field.color(HSV(0.6, 1, 1));
     }
 
     for (unsigned i = 0; i < system.size(); i++) {
@@ -188,8 +188,10 @@ struct MyApp : App, al::osc::PacketHandler {
     lens().near(1);
 
     findNeighbors(cache, CACHE_SIZE);
-    for (int i : cache)
+    for (int i : cache) {
       load(system[i]);
+      field.color(HSV(0.1, 1, 1));
+    }
 
     for (int i = 0; i < system.size(); ++i)
       system[i].player.rate(1.1);
@@ -319,8 +321,10 @@ struct MyApp : App, al::osc::PacketHandler {
       cache.begin(), cache.end(),
       inserter(shouldLoad, shouldLoad.begin())
     );
-    for (int i : shouldLoad)
+    for (int i : shouldLoad) {
       load(system[i]);
+      field.colors()[i].set(HSV(0.1, 1, 1), 1);
+    }
 
     vector<unsigned> shouldClear;
     set_difference(
@@ -328,8 +332,10 @@ struct MyApp : App, al::osc::PacketHandler {
       latest.begin(), latest.end(),
       inserter(shouldClear, shouldClear.begin())
     );
-    for (int i : shouldClear)
+    for (int i : shouldClear) {
       unload(system[i]);
+      field.colors()[i].set(HSV(0.6, 1, 1), 1);
+    }
 
     cache.clear();
     for (int i : latest)
@@ -340,16 +346,11 @@ struct MyApp : App, al::osc::PacketHandler {
     g.nicest();
     if (imageFound)
       if (shouldDrawImage)
-        fffi.quad(g, 12050, 12050, -6025, -6025, -1);
+        fffi.quad(g, 12050, 12050, -6024.5, -6024.5, -1);
 
     g.draw(field);
-    Mesh c;
-    for (int i : cache) {
-      c.vertex(system[i].x, system[i].y, 3);
-      c.color(HSV(0.0, 1, 1));
-    }
-    g.draw(c);
-    g.translate(nav().pos().x, nav().pos().y, 1);
+
+    g.translate(nav().pos().x, nav().pos().y, 0);
     g.scale(r);
     g.draw(ring);
     g.scale(CACHE_SIZE/r);
