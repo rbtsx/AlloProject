@@ -21,6 +21,19 @@ using namespace std;
 #define BLOCK_SIZE (1024)
 #define CACHE_SIZE (80) // in pixels
 
+// TODO:
+// - make CACHE_SIZE a variable parameter
+// - try increasing the number of sound sources
+// - cache KOI id string in StarSystem
+// - render star systems as perspective point cloud
+// - try higher HashSpace dimension
+// - add text HUD with KOI information
+// - make doppler toggle
+// - implement "jumping" the cursor on click
+// - star system eraser tool
+// - use message-passing queues between threads
+//
+
 SearchPaths searchPaths;
 
 vector<string> path;
