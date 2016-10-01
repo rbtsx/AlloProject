@@ -99,8 +99,7 @@ struct MyApp : App, al::osc::PacketHandler {
   Vec3f go;
 
   Texture fffi;
-  Mesh ring;
-  Mesh field;
+  Mesh circle, field, square;
   vector<StarSystem> system;
   SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
   float sourceGain[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
@@ -108,7 +107,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
   float x = 0, y = 0, z = 2000, r = 20, cacheSize = 80, near = 1, far = 40;
 
-  void findNeighbors(vector<unsigned>& n, float r) {
+  void findNeighbors(vector<unsigned>& n, float r, bool shouldSort = false) {
     HashSpace::Query qmany(512);
     qmany.clear(); // XXX why?
     float unit_x = (x + 6025) / 12050;
@@ -119,6 +118,15 @@ struct MyApp : App, al::osc::PacketHandler {
       unit_r * space.dim());
     for (int i = 0; i < results; i++)
       n.push_back(qmany[i]->id);
+    if (shouldSort) {
+      sort(n.begin(), n.end(), [&](unsigned a, unsigned b) {
+        float dist_a = (Vec2f(x, y) - Vec2f(system[a].x, system[a].y)).mag();
+        float dist_b = (Vec2f(x, y) - Vec2f(system[b].x, system[b].y)).mag();
+        if (dist_a > dist_b) return -1;
+        if (dist_b > dist_a) return 1;
+        return 0;
+      });
+    }
   }
 
   float zd = 0;
@@ -149,7 +157,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
     // OSC Configuration
     //
-    App::oscSend().open(13000, "localhost", 0.1, Socket::UDP | Socket::DGRAM);
+    App::oscSend().open(13000, "127.0.0.1", 0.1, Socket::UDP | Socket::DGRAM);
     App::oscRecv().open(13004, "", 0.1, Socket::UDP | Socket::DGRAM);
     App::oscRecv().handler(*this);
     App::oscRecv().start();
@@ -157,13 +165,25 @@ struct MyApp : App, al::osc::PacketHandler {
     // Make a circle
     //
     int N = 360;
-    ring.primitive(Graphics::LINE_STRIP);
+    circle.primitive(Graphics::LINE_STRIP);
     for (int i = 0; i < N + 1; ++i) {
       float theta = M_2PI / N * i;
-      ring.vertex(cos(theta), sin(theta), 0);
-      ring.color(Color(0.5));
-      //ring.color(0, 0, 0);
+      circle.vertex(cos(theta), sin(theta), 0);
+      circle.color(Color(0.5));
+      //circle.color(0, 0, 0);
     }
+
+    // Make a square
+    //
+    square.primitive(Graphics::LINE_LOOP);
+    square.vertex(-6025, -6025);
+    square.vertex(6024, -6025);
+    square.vertex(6024, 6024);
+    square.vertex(-6025, 6024);
+    square.color(Color(0.5));
+    square.color(Color(0.5));
+    square.color(Color(0.5));
+    square.color(Color(0.5));
 
     string filePath = findPath(DATASET "map.txt");
     cout << filePath << endl;
@@ -349,12 +369,13 @@ struct MyApp : App, al::osc::PacketHandler {
         fffi.quad(g, 12050, 12050, -6024.5, -6024.5, -1);
 
     g.draw(field);
+    g.draw(square);
 
     g.translate(nav().pos().x, nav().pos().y, 0);
     g.scale(r);
-    g.draw(ring);
+    g.draw(circle);
     g.scale(CACHE_SIZE/r);
-    g.draw(ring);
+    g.draw(circle);
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
@@ -430,7 +451,7 @@ void load(vector<StarSystem>& system, string filePath) {
     //
     // cell 5: y-coord in FFFI
     while (*p != '|') p++; p++;
-    system.back().y = atof(p);
+    system.back().y = -atof(p); // flip the y axis to match image coordinates
 
     while (*p != '|') p++; p++; // cell 6: ra // IGNORE
     while (*p != '|') p++; p++; // cell 7: dec // IGNORE
