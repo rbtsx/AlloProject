@@ -149,11 +149,14 @@ struct MyApp : App, al::osc::PacketHandler {
 
   MyApp() : scene(BLOCK_SIZE) {
     speakerLayout = new SpeakerLayout();
+    onLaptop = false;
     if (onLaptop) {
+      cout << "Using 2 speaker layout" << endl;
       speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
       speakerLayout->addSpeaker(Speaker(1, -45, 0, 1.0, 1.0));
     }
     else {
+      cout << "Using 3 speaker layout" << endl;
       speakerLayout->addSpeaker(Speaker(0,   0, 0, 100.0, 1.0));
       speakerLayout->addSpeaker(Speaker(1, 120, 0, 100.0, 1.0));
       speakerLayout->addSpeaker(Speaker(2,-120, 0, 100.0, 1.0));
@@ -251,9 +254,17 @@ struct MyApp : App, al::osc::PacketHandler {
     }
 
     initWindow(Window::Dim(200, 200));
-    if (onLaptop);
-    else
+
+    if (onLaptop) {
+       cout << "we're on a laptop, so use normal, default audio hardware" << endl;
+    }
+    else {
+      cout << "we're on the mini, so we will try the TASCAM" << endl;
       audioIO().device(AudioDevice("TASCAM"));
+      AudioDevice::printAll();
+      //sleep(1);
+      exit(1);
+    }
     initAudio(44100, BLOCK_SIZE);
     audioIO().print();
   }
