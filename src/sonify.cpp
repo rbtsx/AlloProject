@@ -68,7 +68,7 @@ struct StarSystem {
 string findPath(string fileName, bool critical = true) {
   for (string d : path) {
     d += "/";
-    cout << "Trying: " << d + fileName << endl;
+    //cout << "Trying: " << d + fileName << endl;
     if (File::exists(d + fileName))
       return d + fileName;
   }
@@ -84,7 +84,7 @@ bool load(StarSystem& system) {
   sprintf(fileName, DATASET "%09d.g.bin.wav", system.kic);
   string filePath = findPath(fileName, false);
   if (system.player.load(filePath.c_str())) {
-    cout << "Loaded " << fileName << " into memory!"<< endl;
+    //cout << "Loaded " << fileName << " into memory!"<< endl;
     return true;
   }
 
@@ -95,7 +95,7 @@ bool load(StarSystem& system) {
 void unload(StarSystem& system) {
   char fileName[200];
   sprintf(fileName, DATASET "%09d.g.bin.wav", system.kic);
-  cout << "Unloaded " << fileName << " from memory!"<< endl;
+  //cout << "Unloaded " << fileName << " from memory!"<< endl;
   system.player.clear();
 }
 
@@ -149,7 +149,6 @@ struct MyApp : App, al::osc::PacketHandler {
 
   MyApp() : scene(BLOCK_SIZE) {
     speakerLayout = new SpeakerLayout();
-    onLaptop = false;
     if (onLaptop) {
       cout << "Using 2 speaker layout" << endl;
       speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
@@ -261,10 +260,11 @@ struct MyApp : App, al::osc::PacketHandler {
     else {
       cout << "we're on the mini, so we will try the TASCAM" << endl;
       audioIO().device(AudioDevice("TASCAM"));
-      AudioDevice::printAll();
+      //AudioDevice::printAll();
       //sleep(1);
-      exit(1);
+      //exit(1);
     }
+
     initAudio(44100, BLOCK_SIZE);
     audioIO().print();
   }
