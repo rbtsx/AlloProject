@@ -4,7 +4,7 @@
 #include "allocore/graphics/al_Texture.hpp"
 #include "allocore/io/al_App.hpp"
 #include "allocore/io/al_File.hpp"
-#include "allocore/sound/al_Ambisonics.hpp"
+#include "allocore/sound/al_Vbap.hpp"
 #include "allocore/spatial/al_HashSpace.hpp"
 #include <fstream> // ifstream
 #include <algorithm> // sort
@@ -103,11 +103,12 @@ void load(vector<StarSystem>& system, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
 
+  bool onLaptop = false;
   bool imageFound = false;
   bool shouldDrawImage = false;
 
   SpeakerLayout* speakerLayout;
-  AmbisonicsSpatializer* panner;
+  Vbap* panner;
   Listener* listener;
   Vec3f go;
 
@@ -142,25 +143,37 @@ struct MyApp : App, al::osc::PacketHandler {
     }
   }
 
-  float zd = 0;
+  float zd = 0, rd = 0;
 
   AudioScene scene;
 
   MyApp() : scene(BLOCK_SIZE) {
     speakerLayout = new SpeakerLayout();
-    speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
-    speakerLayout->addSpeaker(Speaker(1, -45, 0, 1.0, 1.0));
-    panner = new AmbisonicsSpatializer(*speakerLayout, 3, 3);
-    //panner = new AmbisonicsSpatializer(speakerLayout, 2, 1);
+    if (onLaptop) {
+      speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
+      speakerLayout->addSpeaker(Speaker(1, -45, 0, 1.0, 1.0));
+    }
+    else {
+      speakerLayout->addSpeaker(Speaker(0,   0, 0, 100.0, 1.0));
+      speakerLayout->addSpeaker(Speaker(1, 120, 0, 100.0, 1.0));
+      speakerLayout->addSpeaker(Speaker(2,-120, 0, 100.0, 1.0));
+      //speakerLayout->addSpeaker(Speaker(3,   0, 0,   0.0, 0.5));
+    }
+    panner = new Vbap(*speakerLayout);
+    panner->setIs3D(false); // no 3d!
+
     listener = scene.createListener(panner);
     listener->compile();
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
       source[i].nearClip(0.1);
       source[i].farClip(CACHE_SIZE);
-      source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
+      //source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
+      //source[i].law(ATTEN_NONE);
+      source[i].law(ATTEN_LINEAR);
       scene.addSource(source[i]);
     }
-    //panner->print();
+    panner->print();
+
     scene.usePerSampleProcessing(false);
     //scene.usePerSampleProcessing(true);
 
@@ -238,7 +251,11 @@ struct MyApp : App, al::osc::PacketHandler {
     }
 
     initWindow(Window::Dim(200, 200));
+    if (onLaptop);
+    else
+      audioIO().device(AudioDevice("TASCAM"));
     initAudio(44100, BLOCK_SIZE);
+    audioIO().print();
   }
 
   virtual void onSound(AudioIOData& io) {
@@ -282,7 +299,8 @@ struct MyApp : App, al::osc::PacketHandler {
         Vec3f p(system[qmany[i]->id].x, system[qmany[i]->id].y, 0);
         //source[i].pose(Pose(p, Quatd()));
         source[i].pos(p.x, p.y, 0);
-        sourceGain[i] = 1.0f / ((p - position).mag() + 1);
+        //sourceGain[i] = 1.0f / ((p - position).mag() + 1);
+        sourceGain[i] = 0.5;
       }
       else {
         sourceGain[i] = 0;
@@ -299,8 +317,8 @@ struct MyApp : App, al::osc::PacketHandler {
 
     // put the listener there..
     //
-    listener->pose(Pose(position, Quatd()));
-    // ?listener->pos(position.x, position.y, 0);
+    //listener->pose(Pose(position, Quatd()));
+    listener->pos(position.x, position.y, 0);
 
     int numFrames = io.framesPerBuffer();
     for (int k = 0; k < numFrames; k++) {
@@ -323,6 +341,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
   virtual void onAnimate(double dt) {
     z += zd;
+    r += rd;
     if (go.mag() < 0.03) {
     } else if (go.mag() > 0.1) {
       x -= go.x * 4;
@@ -392,12 +411,21 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
+
+    if (k.key() == ' ') {
+      stringstream s;
+      s << "echo " << x << "," << y << " >>coolshit";
+      ::system(s.str().c_str());
+    }
     if (k.key() == 'f') shouldDrawImage = !shouldDrawImage;
     if (k.key() == ']') zd = -100;
     if (k.key() == '[') zd = 100;
+    if (k.key() == ',') rd = -0.33333333;
+    if (k.key() == '.') rd = 0.33333333;
   }
   virtual void onKeyUp(const ViewpointWindow& w, const Keyboard& k) {
     if (k.key() == '[' || k.key() == ']') zd = 0;
+    if (k.key() == ',' || k.key() == '.') rd = 0;
   }
 
   virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
