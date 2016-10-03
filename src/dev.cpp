@@ -44,6 +44,7 @@ struct MyApp : App {
     AudioDevice::printAll();
 
     audioIO().print();
+    fflush(stdout);
 
     if (onLaptop) {
       cout << "we're on a laptop, so use normal, default audio hardware" << endl;
@@ -51,11 +52,14 @@ struct MyApp : App {
     }
     else {
       cout << "we're on the mini, so we will try the TASCAM" << endl;
-      audioIO().device(AudioDevice("TASCAM"));
-      initAudio(44100, BLOCK_SIZE);
+//      audioIO().device(AudioDevice("TASCAM"));
+      audioIO().device(AudioDevice(29));
+      initAudio(44100, BLOCK_SIZE, 4, 0);
     }
+    cout << "GOT HERE" << endl;
 
     audioIO().print();
+    fflush(stdout);
   }
 
   virtual void onSound(AudioIOData& io) {}
