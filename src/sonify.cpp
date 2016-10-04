@@ -5,6 +5,7 @@
 #include "allocore/io/al_App.hpp"
 #include "allocore/io/al_File.hpp"
 #include "allocore/sound/al_Vbap.hpp"
+#include "allocore/sound/al_Dbap.hpp"
 #include "allocore/spatial/al_HashSpace.hpp"
 #include <fstream> // ifstream
 #include <algorithm> // sort
@@ -108,7 +109,7 @@ struct MyApp : App, al::osc::PacketHandler {
   bool shouldDrawImage = false;
 
   SpeakerLayout* speakerLayout;
-  Vbap* panner;
+  Dbap* panner;
   Listener* listener;
   Vec3f go;
 
@@ -161,8 +162,8 @@ struct MyApp : App, al::osc::PacketHandler {
       speakerLayout->addSpeaker(Speaker(2,-120, 0, 100.0, 1.0));
       //speakerLayout->addSpeaker(Speaker(3,   0, 0,   0.0, 0.5));
     }
-    panner = new Vbap(*speakerLayout);
-    panner->setIs3D(false); // no 3d!
+    panner = new Dbap(*speakerLayout);
+    //panner->setIs3D(false); // no 3d!
 
     listener = scene.createListener(panner);
     listener->compile();
@@ -264,7 +265,7 @@ struct MyApp : App, al::osc::PacketHandler {
     }
     else {
       cout << "we're on the mini, so we will try the TASCAM" << endl;
-      audioIO().device(AudioDevice(29));
+      audioIO().device(AudioDevice(27));
       //audioIO().device(AudioDevice("TASCAM"));
       initAudio(44100, BLOCK_SIZE, 4, 0);
     }
