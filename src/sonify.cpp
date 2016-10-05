@@ -19,19 +19,25 @@ using namespace std;
 
 #define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
 #define BLOCK_SIZE (1024)
-#define CACHE_SIZE (80) // in pixels
 
 // TODO:
-// - make CACHE_SIZE a variable parameter
+// - do audio analysis:
+//   + take the FFT of each system
+//   + find onsets/transients of each system
+//   + get the noise-floor
+//   + characterize as choppy or smooth
+// - do audio effects/synthesis
+//   + add dynamic range compression
+//   + add reverb
+//   + resynthesize systems
 // - try increasing the number of sound sources
-// - cache KOI id string in StarSystem
-// - render star systems as perspective point cloud
 // - try higher HashSpace dimension
 // - add text HUD with KOI information
 // - make doppler toggle
+// - render star systems as perspective point cloud
 // - implement "jumping" the cursor on click
-// - star system eraser tool
 // - use message-passing queues between threads
+// - star system eraser tool
 //
 
 vector<string> path;
@@ -57,10 +63,8 @@ struct StarSystem {
   unsigned kic;
   float x, y, amplitude;
   //float ascension, delcination;
-  char name[9];
-  void print() {
-    printf("%09d (%f,%f) %f\n", kic, x, y, amplitude);
-  }
+  //int channel;
+  char name[10];
 };
 
 string findPath(string fileName, bool critical = true) {
@@ -102,8 +106,7 @@ void load(vector<StarSystem>& system, string filePath);
 struct MyApp : App, al::osc::PacketHandler {
 
   bool macOS = false;
-  bool autonomous = true;
-  //bool autonomous = false;
+  bool autonomous = false;
   bool onLaptop = false;
   bool imageFound = false;
   bool shouldDrawImage = false;
@@ -113,6 +116,7 @@ struct MyApp : App, al::osc::PacketHandler {
   Vec3f go;
 
   vector<StarSystem> system;
+
   vector<unsigned> cache;
 
   // Audio Spatialization
@@ -200,7 +204,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
     // preload the cache with systems
     //
-    findNeighbors(cache, x, y, CACHE_SIZE);
+    findNeighbors(cache, x, y, cacheSize);
     for (int i : cache) {
       load(system[i]);
       field.color(HSV(0.1, 1, 1));
@@ -257,7 +261,7 @@ struct MyApp : App, al::osc::PacketHandler {
     listener->compile(); // XXX need this?
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
       source[i].nearClip(0.1);
-      source[i].farClip(CACHE_SIZE);
+      source[i].farClip(cacheSize);
       source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
       //source[i].law(ATTEN_NONE);
       source[i].law(ATTEN_LINEAR);
@@ -265,6 +269,7 @@ struct MyApp : App, al::osc::PacketHandler {
     }
     scene.usePerSampleProcessing(false);
     //scene.usePerSampleProcessing(true);
+
     if (onLaptop) {
       cout << "we're on a laptop, so use default audio hardware" << endl;
       initAudio(44100, BLOCK_SIZE);
@@ -307,13 +312,9 @@ struct MyApp : App, al::osc::PacketHandler {
 
     // send neighbors
     //
-    char buffer[20];
     oscSend().beginMessage("/knn");
-    oscSend() << buffer;
-    for (int i = 0; i < n.size(); i++) {
-      sprintf(buffer, "%09d", system[n[i]].kic);
-      oscSend() << buffer;
-    }
+    for (int i = 0; i < n.size(); i++)
+      oscSend() << system[n[i]].name;
     oscSend().endMessage();
     oscSend().send();
 
@@ -373,7 +374,7 @@ struct MyApp : App, al::osc::PacketHandler {
       nav().pos(Vec3d(x, y, z));
 
     vector<unsigned> latest;
-    findNeighbors(latest, nav().pos().x, nav().pos().y, CACHE_SIZE);
+    findNeighbors(latest, nav().pos().x, nav().pos().y, cacheSize);
 
     sort(cache.begin(), cache.end());
     sort(latest.begin(), latest.end());
@@ -417,7 +418,7 @@ struct MyApp : App, al::osc::PacketHandler {
     g.translate(nav().pos().x, nav().pos().y, 0);
     g.scale(r);
     g.draw(circle);
-    g.scale(CACHE_SIZE/r);
+    g.scale(cacheSize/r);
     g.draw(circle);
   }
 
@@ -488,6 +489,11 @@ struct MyApp : App, al::osc::PacketHandler {
 };
 
 int main(int argc, char* argv[]) {
+  // look for stuff in this folder
+  // and the folder above this one
+  // and in each folder given as
+  // an argument
+  //
   path.push_back(".");
   path.push_back("..");
   for (int i = 1; i < argc; i++)
@@ -507,6 +513,7 @@ void load(vector<StarSystem>& system, string filePath) {
     //
     // cell 0: kic
     system.back().kic = atoi(p);
+    sprintf(system.back().name, "%09u", system.back().kic);
 
     while (*p != '|') p++; p++; // cell 1: ch // IGNORE
     while (*p != '|') p++; p++; // cell 2: x-coord in channel // IGNORE
