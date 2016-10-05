@@ -438,10 +438,10 @@ struct MyApp : App, al::osc::PacketHandler {
       ::system(s.str().c_str());
     }
     if (k.key() == 'f') shouldDrawImage = !shouldDrawImage;
+    if (k.key() == ']') zd = -100;
+    if (k.key() == '[') zd = 100;
 
     if (autonomous) {
-      if (k.key() == ']') zd = -100;
-      if (k.key() == '[') zd = 100;
       if (k.key() == ',') rd = -0.33333333;
       if (k.key() == '.') rd = 0.33333333;
     }
