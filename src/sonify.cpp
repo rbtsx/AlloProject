@@ -358,8 +358,9 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onAnimate(double dt) {
+    z += zd;
+
     if (autonomous) {
-      z += zd;
       r += rd;
       if (go.mag() < 0.03) {
       } else if (go.mag() > 0.1) {
@@ -437,7 +438,9 @@ struct MyApp : App, al::osc::PacketHandler {
       s << "echo " << x << "," << y << " >>coolshit";
       ::system(s.str().c_str());
     }
+
     if (k.key() == 'f') shouldDrawImage = !shouldDrawImage;
+
     if (k.key() == ']') zd = -100;
     if (k.key() == '[') zd = 100;
 
@@ -447,8 +450,9 @@ struct MyApp : App, al::osc::PacketHandler {
     }
   }
   virtual void onKeyUp(const ViewpointWindow& w, const Keyboard& k) {
+    if (k.key() == '[' || k.key() == ']') zd = 0;
+
     if (autonomous) {
-      if (k.key() == '[' || k.key() == ']') zd = 0;
       if (k.key() == ',' || k.key() == '.') rd = 0;
     }
   }
