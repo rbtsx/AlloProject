@@ -5,7 +5,6 @@
 #include "allocore/io/al_App.hpp"
 #include "allocore/io/al_File.hpp"
 #include "allocore/sound/al_Vbap.hpp"
-#include "allocore/sound/al_Dbap.hpp"
 #include "allocore/spatial/al_HashSpace.hpp"
 #include <fstream> // ifstream
 #include <algorithm> // sort
@@ -35,10 +34,7 @@ using namespace std;
 // - use message-passing queues between threads
 //
 
-SearchPaths searchPaths;
-
 vector<string> path;
-
 HashSpace space(5, 190000); // 5++?
 
 // SampleLooper
@@ -61,6 +57,7 @@ struct StarSystem {
   unsigned kic;
   float x, y, amplitude;
   //float ascension, delcination;
+  char name[9];
   void print() {
     printf("%09d (%f,%f) %f\n", kic, x, y, amplitude);
   }
@@ -104,26 +101,34 @@ void load(vector<StarSystem>& system, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
 
-  bool autonomous = false;
+  bool macOS = false;
+  bool autonomous = true;
+  //bool autonomous = false;
   bool onLaptop = false;
   bool imageFound = false;
   bool shouldDrawImage = false;
 
+  float zd = 0, rd = 0;
+  float x = 0, y = 0, z = 2000, r = 20, cacheSize = 80, near = 1, far = 40;
+  Vec3f go;
+
+  vector<StarSystem> system;
+  vector<unsigned> cache;
+
+  // Audio Spatialization
+  //
+  AudioScene scene;
   SpeakerLayout* speakerLayout;
   Vbap* panner;
   Listener* listener;
-  Vec3f go;
+  SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
 
+  // Graphics
+  //
   Texture fffi;
   Mesh circle, field, square;
-  vector<StarSystem> system;
-  SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
-  float sourceGain[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
-  vector<unsigned> cache;
 
-  float x = 0, y = 0, z = 2000, r = 20, cacheSize = 80, near = 1, far = 40;
-
-  void findNeighbors(vector<unsigned>& n, float r, bool shouldSort = false) {
+  void findNeighbors(vector<unsigned>& n, float x, float y, float r, bool shouldSort = false) {
     HashSpace::Query qmany(512);
     qmany.clear(); // XXX why?
     float unit_x = (x + 6025) / 12050;
@@ -145,53 +150,7 @@ struct MyApp : App, al::osc::PacketHandler {
     }
   }
 
-  float zd = 0, rd = 0;
-
-  AudioScene scene;
-
   MyApp() : scene(BLOCK_SIZE) {
-    speakerLayout = new SpeakerLayout();
-    if (onLaptop) {
-      cout << "Using 2 speaker layout" << endl;
-      speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
-      speakerLayout->addSpeaker(Speaker(1, -45, 0, 1.0, 1.0));
-    }
-    else {
-      cout << "Using 3 speaker layout" << endl;
-      speakerLayout->addSpeaker(Speaker(0,   0, 0, 100.0, 1.0));
-      speakerLayout->addSpeaker(Speaker(1, 120, 0, 100.0, 1.0));
-      speakerLayout->addSpeaker(Speaker(2,-120, 0, 100.0, 1.0));
-      //speakerLayout->addSpeaker(Speaker(3,   0, 0,   0.0, 0.5));
-    }
-    panner = new Vbap(*speakerLayout);
-    panner->setIs3D(false); // no 3d!
-    panner->print();
-
-    listener = scene.createListener(panner);
-    listener->compile();
-    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      source[i].nearClip(0.1);
-      source[i].farClip(CACHE_SIZE);
-      source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
-      //source[i].law(ATTEN_NONE);
-      source[i].law(ATTEN_LINEAR);
-      scene.addSource(source[i]);
-    }
-    panner->print();
-
-    scene.usePerSampleProcessing(false);
-    //scene.usePerSampleProcessing(true);
-
-    //
-    navControl().useMouse(false);
-
-
-    // OSC Configuration
-    //
-    App::oscSend().open(13000, "127.0.0.1", 0.1, Socket::UDP | Socket::DGRAM);
-    App::oscRecv().open(13004, "", 0.1, Socket::UDP | Socket::DGRAM);
-    App::oscRecv().handler(*this);
-    App::oscRecv().start();
 
     // Make a circle
     //
@@ -221,12 +180,16 @@ struct MyApp : App, al::osc::PacketHandler {
     load(system, filePath);
     cout << system.size() << " systems loaded from map file" << endl;
 
+    // build a mesh so we can draw all the systems
+    //
     field.primitive(Graphics::POINTS);
     for (unsigned i = 0; i < system.size(); i++) {
       field.vertex(system[i].x, system[i].y, 1);
       field.color(HSV(0.6, 1, 1));
     }
 
+    // position all the systems in the hashspace structure
+    //
     for (unsigned i = 0; i < system.size(); i++) {
       float x = (system[i].x + 6025) / 12050;
       float y = (system[i].y + 6025) / 12050;
@@ -234,119 +197,146 @@ struct MyApp : App, al::osc::PacketHandler {
       space.move(i, x * space.dim(), y * space.dim(), 0);
     }
 
-    nav().pos(x, y, z);
-    lens().far(25010);
-    lens().near(1);
 
-    findNeighbors(cache, CACHE_SIZE);
+    // preload the cache with systems
+    //
+    findNeighbors(cache, x, y, CACHE_SIZE);
     for (int i : cache) {
       load(system[i]);
       field.color(HSV(0.1, 1, 1));
     }
 
+    // add a slight randomization to the playback
+    // rate of each system so they don't all line
+    // up phase-wise
+    //
     for (int i = 0; i < system.size(); ++i)
-      system[i].player.rate(1.1);
+      system[i].player.rate(1.0 + rnd::uniformS() * 0.03);
 
+    // load an image of the starfield
+    //
     filePath = findPath(FFFI_FILE, false);
-    imageFound = !filePath.empty();
-    if (imageFound) {
-      Image i;
-      i.load(filePath);
+    Image i;
+    imageFound = i.load(filePath);
+    if (imageFound)
       fffi.allocate(i.array());
-    }
 
+
+    // Make a window and setup UI
+    //
     initWindow(Window::Dim(200, 200));
+    nav().pos(x, y, z);
+    lens().far(25010);
+    lens().near(1);
+    navControl().useMouse(false);
 
-    AudioDevice::printAll();
-    audioIO().print();
-    fflush(stdout);
+    // Audio configuration and initialization
+    //
 
+    //AudioDevice::printAll();
+    //audioIO().print();
+    //fflush(stdout);
+
+    speakerLayout = new SpeakerLayout();
     if (onLaptop) {
-      cout << "we're on a laptop, so use normal, default audio hardware" << endl;
+      cout << "Using 2 speaker layout" << endl;
+      speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
+      speakerLayout->addSpeaker(Speaker(1, -45, 0, 1.0, 1.0));
+    }
+    else {
+      cout << "Using 3 speaker layout" << endl;
+      speakerLayout->addSpeaker(Speaker(0,   0, 0, 100.0, 1.0));
+      speakerLayout->addSpeaker(Speaker(1, 120, 0, 100.0, 1.0));
+      speakerLayout->addSpeaker(Speaker(2,-120, 0, 100.0, 1.0));
+      //speakerLayout->addSpeaker(Speaker(3,   0, 0,   0.0, 0.5));
+    }
+    panner = new Vbap(*speakerLayout);
+    panner->setIs3D(false); // no 3d!
+    //panner->print();
+    listener = scene.createListener(panner);
+    listener->compile(); // XXX need this?
+    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
+      source[i].nearClip(0.1);
+      source[i].farClip(CACHE_SIZE);
+      source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
+      //source[i].law(ATTEN_NONE);
+      source[i].law(ATTEN_LINEAR);
+      scene.addSource(source[i]);
+    }
+    scene.usePerSampleProcessing(false);
+    //scene.usePerSampleProcessing(true);
+    if (onLaptop) {
+      cout << "we're on a laptop, so use default audio hardware" << endl;
       initAudio(44100, BLOCK_SIZE);
     }
     else {
-      cout << "we're on the mini, so we will try the TASCAM" << endl;
-      //audioIO().device(AudioDevice(29));
-      //audioIO().device(AudioDevice("TASCAM"));
-      audioIO().device(AudioDevice("US-4x4 Wave"));
+      if (macOS) {
+        cout << "we're on macOS (probably Karl's machine)" << endl;
+        audioIO().device(AudioDevice("TASCAM"));
+      }
+      else {
+        cout << "we're on the mini, so we will try the TASCAM" << endl;
+        audioIO().device(AudioDevice("US-4x4 Wave"));
+      }
       initAudio(44100, BLOCK_SIZE, 4, 0);
     }
+    cout << "Using audio device: " << endl;
     audioIO().print();
     fflush(stdout);
+
+    // Configure and start OSC
+    //
+    App::oscSend().open(13000, "127.0.0.1", 0.1, Socket::UDP | Socket::DGRAM);
+    App::oscRecv().open(13004, "127.0.0.1", 0.1, Socket::UDP | Socket::DGRAM);
+    App::oscRecv().handler(*this);
+    App::oscRecv().start();
   }
 
   virtual void onSound(AudioIOData& io) {
     gam::Sync::master().spu(audioIO().fps());
 
+    // make a copy of where we are..
+    //
     float x = nav().pos().x;
     float y = nav().pos().y;
 
-    // make a copy of where we are..
+    // find all the neighbors in sorted order
     //
-    Vec3d position(x, y, 0);
-
-    // get a list of neighbors
-    //
-    HashSpace::Query qmany(MAXIMUM_NUMBER_OF_SOUND_SOURCES);
-    qmany.clear(); // XXX why?
-    float unit_x = (x + 6025) / 12050;
-    float unit_y = (y + 6025) / 12050;
-    float unit_r = r / 12050;
-    int results = qmany(space,
-      Vec3d(unit_x, unit_y, 0) * space.dim(),
-      unit_r * space.dim());
+    vector<unsigned> n;
+    findNeighbors(n, x, y, r, true);
 
     // send neighbors
     //
     char buffer[20];
     oscSend().beginMessage("/knn");
     oscSend() << buffer;
-    for (int i = 0; i < results; i++) {
-      sprintf(buffer, "%09d", system[qmany[i]->id].kic);
+    for (int i = 0; i < n.size(); i++) {
+      sprintf(buffer, "%09d", system[n[i]].kic);
       oscSend() << buffer;
     }
     oscSend().endMessage();
     oscSend().send();
 
     // set sound source positions
-    // calculate distances for attenuation
     //
-    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      if (i < results) {
-        Vec3f p(system[qmany[i]->id].x, system[qmany[i]->id].y, 0);
-        //source[i].pose(Pose(p, Quatd()));
-        source[i].pos(p.x, p.y, 0);
-        //sourceGain[i] = 1.0f / ((p - position).mag() + 1);
-        sourceGain[i] = 0.5;
-      }
-      else {
-        sourceGain[i] = 0;
-      }
-    }
-/*
-    if (results)
-      cout << ">--(" << results << ")--------------<" << endl;
-    for (int i = 0; i < results; i++) {
-      cout << sourceGain[i] << " ";
-      system[qmany[i]->id].print();
-    }
-*/
+    for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
+      if (i < n.size())
+        source[i].pos(system[n[i]].x, system[n[i]].y, 0);
 
-    // put the listener there..
+    // position the listener
     //
-    //listener->pose(Pose(position, Quatd()));
-    listener->pos(position.x, position.y, 0);
+    //listener->pose(Pose(position, Quatd())); // XXX rotate the listener!
+    listener->pos(x, y, 0);
 
     int numFrames = io.framesPerBuffer();
     for (int k = 0; k < numFrames; k++) {
       for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-        if (i < results) {
+        if (i < n.size()) {
           float f = 0;
-          if (system[qmany[i]->id].player.size() > 1)
-            f = system[qmany[i]->id].player();
+          if (system[n[i]].player.size() > 1)
+            f = system[n[i]].player();
           double d = isnan(f) ? 0.0 : (double)f;
-          source[i].writeSample(d * sourceGain[i]);
+          source[i].writeSample(d);
         }
         else {
           source[i].writeSample(0.0);
@@ -383,7 +373,7 @@ struct MyApp : App, al::osc::PacketHandler {
       nav().pos(Vec3d(x, y, z));
 
     vector<unsigned> latest;
-    findNeighbors(latest, CACHE_SIZE);
+    findNeighbors(latest, nav().pos().x, nav().pos().y, CACHE_SIZE);
 
     sort(cache.begin(), cache.end());
     sort(latest.begin(), latest.end());
