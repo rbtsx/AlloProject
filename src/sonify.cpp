@@ -475,7 +475,8 @@ struct MyApp : App, al::osc::PacketHandler {
   virtual void onMessage(osc::Message& m) {
     if (autonomous) {
       // XXX don't listen to them
-      cout << "ignoring " << m << endl;
+      cout << "ignoring OSC message" << endl;
+      m.print();
       return;
     }
 
