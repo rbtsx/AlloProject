@@ -104,6 +104,7 @@ void load(vector<StarSystem>& system, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
 
+  bool autonomous = false;
   bool onLaptop = false;
   bool imageFound = false;
   bool shouldDrawImage = false;
@@ -171,7 +172,7 @@ struct MyApp : App, al::osc::PacketHandler {
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
       source[i].nearClip(0.1);
       source[i].farClip(CACHE_SIZE);
-      //source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
+      source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
       //source[i].law(ATTEN_NONE);
       source[i].law(ATTEN_LINEAR);
       scene.addSource(source[i]);
@@ -357,19 +358,21 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onAnimate(double dt) {
-    z += zd;
-    r += rd;
-    if (go.mag() < 0.03) {
-    } else if (go.mag() > 0.1) {
-      x -= go.x * 4;
-      y -= go.y * 4;
-    } else if (go.mag() > 0.21) {
-      x -= go.x * 16;
-      y -= go.y * 16;
-    }
-    else {
-      x -= go.x;
-      y -= go.y;
+    if (autonomous) {
+      z += zd;
+      r += rd;
+      if (go.mag() < 0.03) {
+      } else if (go.mag() > 0.1) {
+        x -= go.x * 4;
+        y -= go.y * 4;
+      } else if (go.mag() > 0.21) {
+        x -= go.x * 16;
+        y -= go.y * 16;
+      }
+      else {
+        x -= go.x;
+        y -= go.y;
+      }
     }
 
     nav().quat(Quatf(1, 0, 0, 0));
@@ -435,34 +438,47 @@ struct MyApp : App, al::osc::PacketHandler {
       ::system(s.str().c_str());
     }
     if (k.key() == 'f') shouldDrawImage = !shouldDrawImage;
-    if (k.key() == ']') zd = -100;
-    if (k.key() == '[') zd = 100;
-    if (k.key() == ',') rd = -0.33333333;
-    if (k.key() == '.') rd = 0.33333333;
+
+    if (autonomous) {
+      if (k.key() == ']') zd = -100;
+      if (k.key() == '[') zd = 100;
+      if (k.key() == ',') rd = -0.33333333;
+      if (k.key() == '.') rd = 0.33333333;
+    }
   }
   virtual void onKeyUp(const ViewpointWindow& w, const Keyboard& k) {
-    if (k.key() == '[' || k.key() == ']') zd = 0;
-    if (k.key() == ',' || k.key() == '.') rd = 0;
+    if (autonomous) {
+      if (k.key() == '[' || k.key() == ']') zd = 0;
+      if (k.key() == ',' || k.key() == '.') rd = 0;
+    }
   }
 
   virtual void onMouseMove(const ViewpointWindow& w, const Mouse& m) {
-    if (m.x() < 0 || m.y() < 0 || m.x() > w.dimensions().w || m.y() > w.dimensions().h) {
-      go.normalize(0);
-      return;
+    if (autonomous) {
+      if (m.x() < 0 || m.y() < 0 || m.x() > w.dimensions().w || m.y() > w.dimensions().h) {
+        go.normalize(0);
+        return;
+      }
+
+      float x = (float)m.x() / w.dimensions().w;
+      float y = (float)m.y() / w.dimensions().h;
+      y = 1 - y;
+
+      if (x < 0) x = 0;
+      if (y < 0) y = 0;
+      if (x > 1) x = 1;
+      if (y > 1) y = 1;
+      go = Vec3f(0.5, 0.5, 0) - Vec3f(x, y, 0);
     }
-
-    float x = (float)m.x() / w.dimensions().w;
-    float y = (float)m.y() / w.dimensions().h;
-    y = 1 - y;
-
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    if (x > 1) x = 1;
-    if (y > 1) y = 1;
-    go = Vec3f(0.5, 0.5, 0) - Vec3f(x, y, 0);
   }
 
   virtual void onMessage(osc::Message& m) {
+    if (autonomous) {
+      // XXX don't listen to them
+      cout << "ignoring " << m << endl;
+      return;
+    }
+
     if (m.addressPattern() == "/xy") {
       m >> x >> y;
       //cout << "Look at (" << x << "," << y << ")" << endl;
@@ -474,7 +490,6 @@ struct MyApp : App, al::osc::PacketHandler {
       //cout << "Search Radius: " << r << endl;
     } else cout << "Unknown OSC message" << endl;
   }
-
 };
 
 int main(int argc, char* argv[]) {
