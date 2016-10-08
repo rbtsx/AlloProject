@@ -21,6 +21,9 @@ using namespace std;
 #define BLOCK_SIZE (1024)
 
 // TODO:
+// - Figure out why some systems within the load
+//     radius do not change color; are they
+//     loaded? or just not colored?
 // - do audio analysis:
 //   + take the FFT of each system
 //   + find onsets/transients of each system
@@ -30,10 +33,13 @@ using namespace std;
 //   + add dynamic range compression
 //   + add reverb
 //   + resynthesize systems
+// - tune the exponential easing constant to match
 // - try increasing the number of sound sources
 // - try higher HashSpace dimension
 // - add text HUD with KOI information
+// - invert fffi image colors (toggle)
 // - make doppler toggle
+// - make "autonomous mode" toggle
 // - render star systems as perspective point cloud
 // - implement "jumping" the cursor on click
 // - use message-passing queues between threads
