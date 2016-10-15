@@ -5,11 +5,12 @@
 #include "allocore/io/al_App.hpp"
 #include "allocore/io/al_File.hpp"
 #include "allocore/sound/al_Vbap.hpp"
-#include "allocore/spatial/al_HashSpace.hpp"
 #include <fstream> // ifstream
 #include <algorithm> // sort
 using namespace al;
 using namespace std;
+
+
 
 //#define DATASET "wav_sonify/"
 #define DATASET "wav_182864/"
@@ -21,33 +22,31 @@ using namespace std;
 #define BLOCK_SIZE (1024)
 
 // TODO:
-// - Figure out why some systems within the load
+// - Figure out why some starsystems within the load
 //     radius do not change color; are they
 //     loaded? or just not colored?
 // - do audio analysis:
-//   + take the FFT of each system
-//   + find onsets/transients of each system
+//   + take the FFT of each starsystem
+//   + find onsets/transients of each starsystem
 //   + get the noise-floor
 //   + characterize as choppy or smooth
 // - do audio effects/synthesis
 //   + add dynamic range compression
 //   + add reverb
-//   + resynthesize systems
+//   + resynthesize starsystems
 // - tune the exponential easing constant to match
 // - try increasing the number of sound sources
-// - try higher HashSpace dimension
 // - add text HUD with KOI information
 // - invert fffi image colors (toggle)
 // - make doppler toggle
 // - make "autonomous mode" toggle
-// - render star systems as perspective point cloud
+// - render star starsystems as perspective point cloud
 // - implement "jumping" the cursor on click
 // - use message-passing queues between threads
-// - star system eraser tool
+// - star starsystem eraser tool
 //
 
 vector<string> path;
-HashSpace space(5, 190000); // 5++?
 
 // SampleLooper
 //
@@ -73,6 +72,122 @@ struct StarSystem {
   char name[10];
 };
 
+vector<StarSystem> starsystem;
+
+struct Node {
+  unsigned index;
+  Node *left, *right;
+};
+
+struct Node* newNode(unsigned i) {
+  struct Node* temp = new Node;
+  temp->index = i;
+  temp->left = temp->right = NULL;
+  return temp;
+}
+
+// Inserts a new node and returns root of modified tree
+// The parameter depth is used to decide axis of comparison
+Node *insertRec(Node *root, unsigned i, unsigned depth) {
+  // tree is empty?
+  if (root == NULL)
+    return newNode(i);
+
+  // current dimension
+  unsigned d = depth % 2;
+
+  Vec2f r(starsystem[root->index].x, starsystem[root->index].y);
+  Vec2f v(starsystem[i].x, starsystem[i].y);
+
+  if (v.elems()[d] < r.elems()[d])
+    root->left  = insertRec(root->left, i, depth + 1);
+  else
+    root->right = insertRec(root->right, i, depth + 1);
+
+  return root;
+}
+
+Node* insert(Node *root, unsigned i) {
+  return insertRec(root, i, 0);
+}
+
+bool isWithin(Vec2f a, Vec2f b, float r) {
+  if ((a - b).mag() < r)
+    return true;
+  return false;
+}
+
+void findNearestNeighborsRec(Node* root, Vec2f v, float searchRadius, vector<unsigned>& within, unsigned depth) {
+
+  // base case
+  //
+  if (root == NULL) return;
+
+  Vec2f candidate(starsystem[root->index].x, starsystem[root->index].y);
+
+  if (isWithin(candidate, v, searchRadius)) {
+    findNearestNeighborsRec(root->left, v, searchRadius, within, depth + 1);
+    findNearestNeighborsRec(root->right, v, searchRadius, within, depth + 1);
+    within.push_back(root->index);
+    return;
+  }
+
+  // current dimension
+  //
+  unsigned d = depth % 2;
+
+  // go right or left?
+  //
+  if (v.elems()[d] < candidate.elems()[d])
+    findNearestNeighborsRec(root->left, v, searchRadius, within, depth + 1);
+  else
+    findNearestNeighborsRec(root->right, v, searchRadius, within, depth + 1);
+}
+
+void findNearestNeighbors(Node* root, Vec2f v, float searchRadius, vector<unsigned>& within) {
+  findNearestNeighborsRec(root, v, searchRadius, within, 0);
+}
+
+void sortListRec(vector<unsigned>& given, vector<unsigned>& sorted, unsigned depth) {
+  if (given.size() == 0)
+    return;
+  else if (given.size() == 1) {
+    sorted.push_back(given[0]);
+    return;
+  }
+  else if (given.size() == 2) {
+    sorted.push_back(given[0]);
+    sorted.push_back(given[1]);
+    return;
+  }
+
+  // find the median of the dimension
+  //
+  unsigned d = depth % 2;
+  sort(given.begin(), given.end(),
+    [=](unsigned a, unsigned b) {
+      Vec2f A(starsystem[a].x, starsystem[a].y);
+      Vec2f B(starsystem[b].x, starsystem[b].y);
+      return A.elems()[d] < B.elems()[d];
+    }
+  );
+  unsigned middle = given.size() / 2 + 1;
+  sorted.push_back(given[middle]);
+
+  vector<unsigned> left, right;
+  for (unsigned i = 0; i < given.size(); i++)
+    if (i < middle)
+      left.push_back(given[i]);
+    else if (i > middle)
+      right.push_back(given[i]);
+
+  sortListRec(left, sorted, 1 + depth);
+  sortListRec(right, sorted, 1 + depth);
+}
+
+void sortList(vector<unsigned>& given, vector<unsigned>& sorted) {
+  sortListRec(given, sorted, 0);
+}
 string findPath(string fileName, bool critical = true) {
   for (string d : path) {
     d += "/";
@@ -87,12 +202,12 @@ string findPath(string fileName, bool critical = true) {
   return string(fileName + " does not exist!");
 }
 
-bool load(StarSystem& system) {
+bool load(StarSystem& starsystem) {
   char fileName[200];
-  sprintf(fileName, DATASET "%09d.g.bin.wav", system.kic);
+  sprintf(fileName, DATASET "%09d.g.bin.wav", starsystem.kic);
   string filePath = findPath(fileName, false);
-  if (system.player.load(filePath.c_str())) {
-    //cout << "Loaded " << fileName << " into memory!"<< endl;
+  if (starsystem.player.load(filePath.c_str())) {
+    cout << "Loaded " << fileName << " into memory!"<< endl;
     return true;
   }
 
@@ -100,16 +215,18 @@ bool load(StarSystem& system) {
   return false;
 }
 
-void unload(StarSystem& system) {
+void unload(StarSystem& starsystem) {
   char fileName[200];
-  sprintf(fileName, DATASET "%09d.g.bin.wav", system.kic);
-  //cout << "Unloaded " << fileName << " from memory!"<< endl;
-  system.player.clear();
+  sprintf(fileName, DATASET "%09d.g.bin.wav", starsystem.kic);
+  cout << "Unloaded " << fileName << " from memory!"<< endl;
+  starsystem.player.clear();
 }
 
-void load(vector<StarSystem>& system, string filePath);
+void load(vector<StarSystem>& starsystem, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
+
+  Node* kd;
 
   bool macOS = false;
   bool autonomous = false;
@@ -118,12 +235,10 @@ struct MyApp : App, al::osc::PacketHandler {
   bool shouldDrawImage = false;
 
   float zd = 0, rd = 0;
-  float x = 0, y = 0, z = 2000, r = 20, cacheSize = 80, near = 1, far = 40;
+  float x = 0, y = 0, z = 666, listenRadius = 60, loadRadius = 100, unloadRadius = 150, near = 0.2;
   Vec3f go;
 
-  vector<StarSystem> system;
-
-  vector<unsigned> cache;
+  vector<unsigned> loaded;
 
   // Audio Spatialization
   //
@@ -139,20 +254,12 @@ struct MyApp : App, al::osc::PacketHandler {
   Mesh circle, field, square;
 
   void findNeighbors(vector<unsigned>& n, float x, float y, float r, bool shouldSort = false) {
-    HashSpace::Query qmany(512);
-    qmany.clear(); // XXX why?
-    float unit_x = (x + 6025) / 12050;
-    float unit_y = (y + 6025) / 12050;
-    float unit_r = r / 12050;
-    int results = qmany(space,
-      Vec3d(unit_x, unit_y, 0) * space.dim(),
-      unit_r * space.dim());
-    for (int i = 0; i < results; i++)
-      n.push_back(qmany[i]->id);
+    findNearestNeighbors(kd, Vec2f(x, y), r, n);
     if (shouldSort) {
+      // XXX is this correct???
       sort(n.begin(), n.end(), [&](unsigned a, unsigned b) {
-        float dist_a = (Vec2f(x, y) - Vec2f(system[a].x, system[a].y)).mag();
-        float dist_b = (Vec2f(x, y) - Vec2f(system[b].x, system[b].y)).mag();
+        float dist_a = (Vec2f(x, y) - Vec2f(starsystem[a].x, starsystem[a].y)).mag();
+        float dist_b = (Vec2f(x, y) - Vec2f(starsystem[b].x, starsystem[b].y)).mag();
         if (dist_a > dist_b) return -1;
         if (dist_b > dist_a) return 1;
         return 0;
@@ -161,6 +268,8 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   MyApp() : scene(BLOCK_SIZE) {
+    //macOS = autonomous = onLaptop = true;
+    macOS = autonomous = true;
 
     // Make a circle
     //
@@ -187,41 +296,52 @@ struct MyApp : App, al::osc::PacketHandler {
 
     string filePath = findPath(DATASET "map.txt");
     cout << filePath << endl;
-    load(system, filePath);
-    cout << system.size() << " systems loaded from map file" << endl;
+    load(starsystem, filePath);
+    cout << starsystem.size() << " starsystems loaded from map file" << endl;
 
-    // build a mesh so we can draw all the systems
+    vector<unsigned> initial, sorted;
+    for (unsigned i = 0; i < starsystem.size(); i++)
+      initial.push_back(i);
+    sortList(initial, sorted);
+    for (auto e : sorted)
+      kd = insert(kd, e);
+    for (int i = 0; i < 10; i++) {
+      Vec2f spot = Vec2f(rnd::uniform(-6025.0f, 6024.0f), rnd::uniform(-6025.0f, 6024.0f));
+      cout << "----- within 60 of " << spot << " -----------------" << endl;
+      vector<unsigned> neighbor;
+      findNearestNeighbors(kd, spot, 60, neighbor);
+      for (unsigned e : neighbor)
+        cout << starsystem[e].x << "," << starsystem[e].y << endl;
+    }
+
+    // build a mesh so we can draw all the starsystems
     //
     field.primitive(Graphics::POINTS);
-    for (unsigned i = 0; i < system.size(); i++) {
-      field.vertex(system[i].x, system[i].y, 1);
+    for (unsigned i = 0; i < starsystem.size(); i++) {
+      field.vertex(starsystem[i].x, starsystem[i].y, 1);
       field.color(HSV(0.6, 1, 1));
     }
 
-    // position all the systems in the hashspace structure
+    // preload the cache with starsystems
     //
-    for (unsigned i = 0; i < system.size(); i++) {
-      float x = (system[i].x + 6025) / 12050;
-      float y = (system[i].y + 6025) / 12050;
-      //cout << x << "," << y << endl;
-      space.move(i, x * space.dim(), y * space.dim(), 0);
-    }
-
-
-    // preload the cache with systems
-    //
-    findNeighbors(cache, x, y, cacheSize);
-    for (int i : cache) {
-      load(system[i]);
+    findNeighbors(loaded, x, y, loadRadius);
+    for (int i : loaded) {
+      load(starsystem[i]);
       field.color(HSV(0.1, 1, 1));
     }
 
+    // sort in preparation for set difference
+    // operations...
+    //
+    sort(loaded.begin(), loaded.end());
+
+
     // add a slight randomization to the playback
-    // rate of each system so they don't all line
+    // rate of each starsystem so they don't all line
     // up phase-wise
     //
-    for (int i = 0; i < system.size(); ++i)
-      system[i].player.rate(1.0 + rnd::uniformS() * 0.03);
+    for (int i = 0; i < starsystem.size(); ++i)
+      starsystem[i].player.rate(1.0 + rnd::uniformS() * 0.03);
 
     // load an image of the starfield
     //
@@ -262,15 +382,16 @@ struct MyApp : App, al::osc::PacketHandler {
     }
     panner = new Vbap(*speakerLayout);
     panner->setIs3D(false); // no 3d!
-    //panner->print();
+    panner->print();
     listener = scene.createListener(panner);
     listener->compile(); // XXX need this?
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
-      source[i].nearClip(0.1);
-      source[i].farClip(cacheSize);
+      source[i].nearClip(near);
+      source[i].farClip(listenRadius);
       source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
-      //source[i].law(ATTEN_NONE);
-      source[i].law(ATTEN_LINEAR);
+      source[i].law(ATTEN_NONE);
+      //source[i].law(ATTEN_INVERSE);
+      //source[i].law(ATTEN_LINEAR);
       scene.addSource(source[i]);
     }
     scene.usePerSampleProcessing(false);
@@ -314,13 +435,13 @@ struct MyApp : App, al::osc::PacketHandler {
     // find all the neighbors in sorted order
     //
     vector<unsigned> n;
-    findNeighbors(n, x, y, r, true);
+    findNeighbors(n, x, y, listenRadius, true);
 
     // send neighbors
     //
     oscSend().beginMessage("/knn");
     for (int i = 0; i < n.size(); i++)
-      oscSend() << system[n[i]].name;
+      oscSend() << starsystem[n[i]].name;
     oscSend().endMessage();
     oscSend().send();
 
@@ -328,7 +449,7 @@ struct MyApp : App, al::osc::PacketHandler {
     //
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
       if (i < n.size())
-        source[i].pos(system[n[i]].x, system[n[i]].y, 0);
+        source[i].pos(starsystem[n[i]].x, starsystem[n[i]].y, 0);
 
     // position the listener
     //
@@ -340,9 +461,9 @@ struct MyApp : App, al::osc::PacketHandler {
       for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
         if (i < n.size()) {
           float f = 0;
-          if (system[n[i]].player.size() > 1)
-            f = system[n[i]].player();
-          double d = isnan(f) ? 0.0 : (double)f;
+          if (starsystem[n[i]].player.size() > 1)
+            f = starsystem[n[i]].player();
+          double d = isnan(f) ? 0.0 : (double)f; // XXX need this nan check?
           source[i].writeSample(d);
         }
         else {
@@ -356,9 +477,11 @@ struct MyApp : App, al::osc::PacketHandler {
 
   virtual void onAnimate(double dt) {
     z += zd;
+    if (z > 25010) z = 25010;
+    if (z < 1) z = 1;
 
     if (autonomous) {
-      r += rd;
+      listenRadius += rd;
       if (go.mag() < 0.03) {
       } else if (go.mag() > 0.1) {
         x -= go.x * 4;
@@ -373,43 +496,68 @@ struct MyApp : App, al::osc::PacketHandler {
       }
     }
 
+    // force nav to face forward
+    //
     nav().quat(Quatf(1, 0, 0, 0));
+
+    // ease toward the target
+    //
     if ((Vec3d(x, y, z) - nav().pos()).mag() > 0.1)
-      nav().pos(nav().pos() + (Vec3d(x, y, z) - nav().pos()) * 0.11);
+      nav().pos(nav().pos() + (Vec3d(x, y, z) - nav().pos()) * 0.5);
     else
       nav().pos(Vec3d(x, y, z));
 
-    vector<unsigned> latest;
-    findNeighbors(latest, nav().pos().x, nav().pos().y, cacheSize);
+    // find all the stuff that's outside the unload radius
+    // and remove it.
+    //
+    vector<unsigned> shouldUnload, newLoaded;
+    for (int i : loaded)
+      if ((Vec2f(starsystem[i].x, starsystem[i].y)
+            - Vec2f(nav().pos().x, nav().pos().y)).mag()
+          > unloadRadius)
+        shouldUnload.push_back(i);
+    for (int i : shouldUnload) {
+      unload(starsystem[i]);
+      field.colors()[i].set(HSV(0.6, 1, 1), 1);
+    }
+    sort(shouldUnload.begin(), shouldUnload.end());
+    set_difference(
+      loaded.begin(), loaded.end(),
+      shouldUnload.begin(), shouldUnload.end(),
+      inserter(newLoaded, newLoaded.begin())
+    );
+    sort(newLoaded.begin(), newLoaded.end());
 
-    sort(cache.begin(), cache.end());
-    sort(latest.begin(), latest.end());
 
+    // get the list of indexes that represent the nearest
+    // neighbors to the current position. sort these indexes
+    // in preparation for doing set difference operations.
+    //
+    vector<unsigned> neighbor;
+    findNeighbors(neighbor, nav().pos().x, nav().pos().y, loadRadius);
+    sort(neighbor.begin(), neighbor.end());
+
+    // load the starsystems that need loading because they are
+    // nearest neighbors, but they are not in the cache
+    //
     vector<unsigned> shouldLoad;
     set_difference(
-      latest.begin(), latest.end(),
-      cache.begin(), cache.end(),
+      neighbor.begin(), neighbor.end(),
+      newLoaded.begin(), newLoaded.end(),
       inserter(shouldLoad, shouldLoad.begin())
     );
     for (int i : shouldLoad) {
-      load(system[i]);
+      load(starsystem[i]);
       field.colors()[i].set(HSV(0.1, 1, 1), 1);
+      newLoaded.push_back(i);
     }
 
-    vector<unsigned> shouldClear;
-    set_difference(
-      cache.begin(), cache.end(),
-      latest.begin(), latest.end(),
-      inserter(shouldClear, shouldClear.begin())
-    );
-    for (int i : shouldClear) {
-      unload(system[i]);
-      field.colors()[i].set(HSV(0.6, 1, 1), 1);
-    }
-
-    cache.clear();
-    for (int i : latest)
-      cache.push_back(i);
+    // leave the loaded list current and sorted
+    //
+    loaded.clear();
+    for (int i : newLoaded)
+      loaded.push_back(i);
+    sort(loaded.begin(), loaded.end());
   }
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
@@ -422,9 +570,13 @@ struct MyApp : App, al::osc::PacketHandler {
     g.draw(square);
 
     g.translate(nav().pos().x, nav().pos().y, 0);
-    g.scale(r);
+    g.scale(listenRadius);
     g.draw(circle);
-    g.scale(cacheSize/r);
+    g.scale(loadRadius/listenRadius);
+    g.draw(circle);
+    g.scale(near/loadRadius);
+    g.draw(circle);
+    g.scale(unloadRadius/near);
     g.draw(circle);
   }
 
@@ -433,7 +585,7 @@ struct MyApp : App, al::osc::PacketHandler {
     if (k.key() == ' ') {
       stringstream s;
       s << "echo " << x << "," << y << " >>coolshit";
-      ::system(s.str().c_str());
+      system(s.str().c_str());
     }
 
     if (k.key() == 'f') shouldDrawImage = !shouldDrawImage;
@@ -488,8 +640,8 @@ struct MyApp : App, al::osc::PacketHandler {
       m >> z;
       //cout << "Zoom 'closeness': " << z << endl;
     } else if (m.addressPattern() == "/r") {
-      m >> r;
-      //cout << "Search Radius: " << r << endl;
+      m >> listenRadius;
+      //cout << "Search Radius: " << listenRadius << endl;
     } else cout << "Unknown OSC message" << endl;
   }
 };
@@ -507,19 +659,19 @@ int main(int argc, char* argv[]) {
   MyApp().start();
 }
 
-void load(vector<StarSystem>& system, string filePath) {
+void load(vector<StarSystem>& starsystem, string filePath) {
   ifstream mapFile(filePath);
   string line;
   while (getline(mapFile, line)) {
 //    cout << line.length() << endl;
     char *p = new char[line.length() + 1];
     strcpy(p, line.c_str());
-    system.push_back(StarSystem());
+    starsystem.push_back(StarSystem());
 
     //
     // cell 0: kic
-    system.back().kic = atoi(p);
-    sprintf(system.back().name, "%09u", system.back().kic);
+    starsystem.back().kic = atoi(p);
+    sprintf(starsystem.back().name, "%09u", starsystem.back().kic);
 
     while (*p != '|') p++; p++; // cell 1: ch // IGNORE
     while (*p != '|') p++; p++; // cell 2: x-coord in channel // IGNORE
@@ -528,11 +680,11 @@ void load(vector<StarSystem>& system, string filePath) {
     //
     // cell 4: x-coord in FFFI
     while (*p != '|') p++; p++;
-    system.back().x = atof(p);
+    starsystem.back().x = atof(p);
     //
     // cell 5: y-coord in FFFI
     while (*p != '|') p++; p++;
-    system.back().y = -atof(p); // flip the y axis to match image coordinates
+    starsystem.back().y = -atof(p); // flip the y axis to match image coordinates
 
     while (*p != '|') p++; p++; // cell 6: ra // IGNORE
     while (*p != '|') p++; p++; // cell 7: dec // IGNORE
@@ -540,8 +692,8 @@ void load(vector<StarSystem>& system, string filePath) {
     //
     // cell 8: mean amplitude
     while (*p != '|') p++; p++;
-    system.back().amplitude = atof(p);
+    starsystem.back().amplitude = atof(p);
 
-//    system.back().print();
+//    starsystem.back().print();
   }
 }
