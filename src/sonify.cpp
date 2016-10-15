@@ -7,10 +7,9 @@
 #include "allocore/sound/al_Vbap.hpp"
 #include <fstream> // ifstream
 #include <algorithm> // sort
+#include <set>
 using namespace al;
 using namespace std;
-
-
 
 //#define DATASET "wav_sonify/"
 #define DATASET "wav_182864/"
@@ -117,7 +116,7 @@ bool isWithin(Vec2f a, Vec2f b, float r) {
   return false;
 }
 
-void findNearestNeighborsRec(Node* root, Vec2f v, float searchRadius, vector<unsigned>& within, unsigned depth) {
+void findNearestNeighborsRec(Node* root, Vec2f v, float searchRadius, vector<unsigned>& within, unsigned depth, unsigned& best, float& bestDistance) {
 
   // base case
   //
@@ -125,27 +124,41 @@ void findNearestNeighborsRec(Node* root, Vec2f v, float searchRadius, vector<uns
 
   Vec2f candidate(starsystem[root->index].x, starsystem[root->index].y);
 
-  if (isWithin(candidate, v, searchRadius)) {
-    findNearestNeighborsRec(root->left, v, searchRadius, within, depth + 1);
-    findNearestNeighborsRec(root->right, v, searchRadius, within, depth + 1);
+  if (isWithin(candidate, v, searchRadius))
     within.push_back(root->index);
+
+  // leave node
+  if (root->left == NULL && root->right == NULL) {
+    best = root->index;
+    bestDistance = (v - candidate).mag();
     return;
   }
+
+    findNearestNeighborsRec(root->right, v, searchRadius, within, depth + 1, best, bestDistance);
 
   // current dimension
   //
   unsigned d = depth % 2;
 
-  // go right or left?
-  //
-  if (v.elems()[d] < candidate.elems()[d])
-    findNearestNeighborsRec(root->left, v, searchRadius, within, depth + 1);
-  else
-    findNearestNeighborsRec(root->right, v, searchRadius, within, depth + 1);
+  bool goLeft = v.elems()[d] < candidate.elems()[d];
+  findNearestNeighborsRec(goLeft ? root->left : root->right, v, searchRadius, within, depth + 1, best, bestDistance);
+
+  // we've recursed all the way to the leaves...
+
+  float b = (candidate - Vec2f(starsystem[best].x, starsystem[best].y)).mag();
+  if (b < bestDistance) {
+    bestDistance = b;
+    best = root->index;
+  }
+
+  if (abs(v.elems()[d] - candidate.elems()[d]) < searchRadius)
+    findNearestNeighborsRec(goLeft ? root->right : root->left, v, searchRadius, within, depth + 1, best, bestDistance);
 }
 
 void findNearestNeighbors(Node* root, Vec2f v, float searchRadius, vector<unsigned>& within) {
-  findNearestNeighborsRec(root, v, searchRadius, within, 0);
+  unsigned int best = 0;
+  float bestDistance = 99999999.0f;
+  findNearestNeighborsRec(root, v, searchRadius, within, 0, best, bestDistance);
 }
 
 void sortListRec(vector<unsigned>& given, vector<unsigned>& sorted, unsigned depth) {
@@ -207,7 +220,7 @@ bool load(StarSystem& starsystem) {
   sprintf(fileName, DATASET "%09d.g.bin.wav", starsystem.kic);
   string filePath = findPath(fileName, false);
   if (starsystem.player.load(filePath.c_str())) {
-    cout << "Loaded " << fileName << " into memory!"<< endl;
+    //cout << "Loaded " << fileName << " into memory!"<< endl;
     return true;
   }
 
@@ -218,7 +231,7 @@ bool load(StarSystem& starsystem) {
 void unload(StarSystem& starsystem) {
   char fileName[200];
   sprintf(fileName, DATASET "%09d.g.bin.wav", starsystem.kic);
-  cout << "Unloaded " << fileName << " from memory!"<< endl;
+  //cout << "Unloaded " << fileName << " from memory!"<< endl;
   starsystem.player.clear();
 }
 
@@ -235,10 +248,11 @@ struct MyApp : App, al::osc::PacketHandler {
   bool shouldDrawImage = false;
 
   float zd = 0, rd = 0;
-  float x = 0, y = 0, z = 666, listenRadius = 60, loadRadius = 100, unloadRadius = 150, near = 0.2;
+  float x = 0, y = 0, z = 666, listenRadius = 25, loadRadius = 50, unloadRadius = 100, near = 0.2;
   Vec3f go;
 
-  vector<unsigned> loaded;
+  //vector<unsigned> loaded;
+  set<unsigned> loaded;
 
   // Audio Spatialization
   //
@@ -305,6 +319,7 @@ struct MyApp : App, al::osc::PacketHandler {
     sortList(initial, sorted);
     for (auto e : sorted)
       kd = insert(kd, e);
+/*
     for (int i = 0; i < 10; i++) {
       Vec2f spot = Vec2f(rnd::uniform(-6025.0f, 6024.0f), rnd::uniform(-6025.0f, 6024.0f));
       cout << "----- within 60 of " << spot << " -----------------" << endl;
@@ -313,7 +328,7 @@ struct MyApp : App, al::osc::PacketHandler {
       for (unsigned e : neighbor)
         cout << starsystem[e].x << "," << starsystem[e].y << endl;
     }
-
+*/
     // build a mesh so we can draw all the starsystems
     //
     field.primitive(Graphics::POINTS);
@@ -324,16 +339,16 @@ struct MyApp : App, al::osc::PacketHandler {
 
     // preload the cache with starsystems
     //
-    findNeighbors(loaded, x, y, loadRadius);
-    for (int i : loaded) {
+    vector<unsigned> foo;
+    findNeighbors(foo, x, y, loadRadius);
+    for (int i : foo) {
       load(starsystem[i]);
-      field.color(HSV(0.1, 1, 1));
+      //loaded.push_back(i);
+      loaded.insert(i);
+      // XXX this was a bad indicator bug!!
+      // field.color(HSV(0.1, 1, 1));
+      field.colors()[i].set(HSV(0.1, 1, 1), 1);
     }
-
-    // sort in preparation for set difference
-    // operations...
-    //
-    sort(loaded.begin(), loaded.end());
 
 
     // add a slight randomization to the playback
@@ -441,7 +456,8 @@ struct MyApp : App, al::osc::PacketHandler {
     //
     oscSend().beginMessage("/knn");
     for (int i = 0; i < n.size(); i++)
-      oscSend() << starsystem[n[i]].name;
+      if (i < MAXIMUM_NUMBER_OF_SOUND_SOURCES)
+        oscSend() << starsystem[n[i]].name;
     oscSend().endMessage();
     oscSend().send();
 
@@ -502,62 +518,75 @@ struct MyApp : App, al::osc::PacketHandler {
 
     // ease toward the target
     //
-    if ((Vec3d(x, y, z) - nav().pos()).mag() > 0.1)
-      nav().pos(nav().pos() + (Vec3d(x, y, z) - nav().pos()) * 0.5);
+    if ((Vec3d(x, y, z) - nav().pos()).mag() > 0.01)
+      nav().pos(nav().pos() + (Vec3d(x, y, z) - nav().pos()) * 0.9);
     else
       nav().pos(Vec3d(x, y, z));
 
-    // find all the stuff that's outside the unload radius
-    // and remove it.
-    //
-    vector<unsigned> shouldUnload, newLoaded;
+    vector<unsigned> neighbor;
+    findNearestNeighbors(kd, Vec2f(x, y), loadRadius, neighbor);
+    for (int i : neighbor)
+      if (loaded.find(i) == loaded.end()) {
+        field.colors()[i].set(HSV(0.1, 1, 1), 1);
+        load(starsystem[i]);
+      }
+
+    vector<unsigned> keep;
     for (int i : loaded)
       if ((Vec2f(starsystem[i].x, starsystem[i].y)
-            - Vec2f(nav().pos().x, nav().pos().y)).mag()
-          > unloadRadius)
-        shouldUnload.push_back(i);
+            - Vec2f(x, y)).mag()
+          > unloadRadius) {
+        unload(starsystem[i]);
+        field.colors()[i].set(HSV(0.6, 1, 1), 1);
+      }
+      else {
+        keep.push_back(i);
+      }
+
+      loaded.clear();
+      for (auto i : keep)
+        loaded.insert(i);
+      for (auto i : neighbor)
+        loaded.insert(i);
+
+/*
+
+    sort(loaded.begin(), loaded.end());
+
+    vector<unsigned> neighbor, shouldLoad;
+    findNearestNeighbors(kd, Vec2f(nav().pos().x, nav().pos().y), loadRadius, neighbor);
+    sort(neighbor.begin(), neighbor.end());
+    set_difference(
+      neighbor.begin(), neighbor.end(),
+      loaded.begin(), loaded.end(),
+      inserter(shouldLoad, shouldLoad.begin())
+    );
+
+    vector<unsigned> keep, shouldUnload;
+    findNearestNeighbors(kd, Vec2f(nav().pos().x, nav().pos().y), unloadRadius, keep);
+    sort(keep.begin(), keep.end());
+    set_difference(
+      loaded.begin(), loaded.end(),
+      keep.begin(), keep.end(),
+      inserter(shouldUnload, shouldUnload.begin())
+    );
+
+    loaded.clear();
+    for (int i : shouldLoad)
+      loaded.push_back(i);
+    for (auto i : keep)
+      loaded.push_back(i);
+
+    for (auto i : shouldLoad) {
+      load(starsystem[i]);
+      field.colors()[i].set(HSV(0.1, 1, 1), 1);
+    }
+
     for (int i : shouldUnload) {
       unload(starsystem[i]);
       field.colors()[i].set(HSV(0.6, 1, 1), 1);
     }
-    sort(shouldUnload.begin(), shouldUnload.end());
-    set_difference(
-      loaded.begin(), loaded.end(),
-      shouldUnload.begin(), shouldUnload.end(),
-      inserter(newLoaded, newLoaded.begin())
-    );
-    sort(newLoaded.begin(), newLoaded.end());
-
-
-    // get the list of indexes that represent the nearest
-    // neighbors to the current position. sort these indexes
-    // in preparation for doing set difference operations.
-    //
-    vector<unsigned> neighbor;
-    findNeighbors(neighbor, nav().pos().x, nav().pos().y, loadRadius);
-    sort(neighbor.begin(), neighbor.end());
-
-    // load the starsystems that need loading because they are
-    // nearest neighbors, but they are not in the cache
-    //
-    vector<unsigned> shouldLoad;
-    set_difference(
-      neighbor.begin(), neighbor.end(),
-      newLoaded.begin(), newLoaded.end(),
-      inserter(shouldLoad, shouldLoad.begin())
-    );
-    for (int i : shouldLoad) {
-      load(starsystem[i]);
-      field.colors()[i].set(HSV(0.1, 1, 1), 1);
-      newLoaded.push_back(i);
-    }
-
-    // leave the loaded list current and sorted
-    //
-    loaded.clear();
-    for (int i : newLoaded)
-      loaded.push_back(i);
-    sort(loaded.begin(), loaded.end());
+*/
   }
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
