@@ -17,7 +17,7 @@ using namespace std;
 //#define FFFI_FILE "FFFI.tif"
 #define FFFI_FILE "printedFFFI.png"
 
-#define MAXIMUM_NUMBER_OF_SOUND_SOURCES (10)
+#define MAXIMUM_NUMBER_OF_SOUND_SOURCES (20)
 #define BLOCK_SIZE (1024)
 
 // TODO:
@@ -134,7 +134,7 @@ void findNearestNeighborsRec(Node* root, Vec2f v, float searchRadius, vector<uns
     return;
   }
 
-    findNearestNeighborsRec(root->right, v, searchRadius, within, depth + 1, best, bestDistance);
+  //findNearestNeighborsRec(root->right, v, searchRadius, within, depth + 1, best, bestDistance);
 
   // current dimension
   //
@@ -239,7 +239,7 @@ void load(vector<StarSystem>& starsystem, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
 
-  Node* kd;
+  Node* kd = NULL; // XXX very important that this is initially NULL!!!
 
   bool macOS = false;
   bool autonomous = false;
@@ -248,7 +248,7 @@ struct MyApp : App, al::osc::PacketHandler {
   bool shouldDrawImage = false;
 
   float zd = 0, rd = 0;
-  float x = 0, y = 0, z = 666, listenRadius = 25, loadRadius = 50, unloadRadius = 100, near = 0.2;
+  float x = 0, y = 0, z = 666, listenRadius = 50, loadRadius = 75, unloadRadius = 100, near = 0.2;
   Vec3f go;
 
   //vector<unsigned> loaded;
@@ -283,7 +283,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
   MyApp() : scene(BLOCK_SIZE) {
     //macOS = autonomous = onLaptop = true;
-    macOS = autonomous = true;
+    //macOS = autonomous = true;
 
     // Make a circle
     //
@@ -317,6 +317,7 @@ struct MyApp : App, al::osc::PacketHandler {
     for (unsigned i = 0; i < starsystem.size(); i++)
       initial.push_back(i);
     sortList(initial, sorted);
+    assert(initial.size() == sorted.size());
     for (auto e : sorted)
       kd = insert(kd, e);
 /*
@@ -451,6 +452,11 @@ struct MyApp : App, al::osc::PacketHandler {
     //
     vector<unsigned> n;
     findNeighbors(n, x, y, listenRadius, true);
+
+//    for (int i = 0; i < n.size(); i++)
+//      cout << n[i] << " ";
+    cout << n.size() << endl;
+
 
     // send neighbors
     //
