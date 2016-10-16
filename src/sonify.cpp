@@ -17,8 +17,8 @@ using namespace std;
 //#define FFFI_FILE "FFFI.tif"
 #define FFFI_FILE "printedFFFI.png"
 
-#define MAXIMUM_NUMBER_OF_SOUND_SOURCES (20)
-#define BLOCK_SIZE (1024)
+#define MAXIMUM_NUMBER_OF_SOUND_SOURCES (50)
+#define BLOCK_SIZE (2048)
 
 // TODO:
 // - Figure out why some starsystems within the load
@@ -243,12 +243,11 @@ struct MyApp : App, al::osc::PacketHandler {
 
   bool macOS = false;
   bool autonomous = false;
-  bool onLaptop = false;
   bool imageFound = false;
   bool shouldDrawImage = false;
 
   float zd = 0, rd = 0;
-  float x = 0, y = 0, z = 666, listenRadius = 50, loadRadius = 75, unloadRadius = 100, near = 0.2;
+  float x = 0, y = 0, z = 666, listenRadius = 75, loadRadius = 100, unloadRadius = 150, near = 0.2;
   Vec3f go;
 
   //vector<unsigned> loaded;
@@ -258,7 +257,7 @@ struct MyApp : App, al::osc::PacketHandler {
   //
   AudioScene scene;
   SpeakerLayout* speakerLayout;
-  Vbap* panner;
+  Spatializer* panner;
   Listener* listener;
   SoundSource source[MAXIMUM_NUMBER_OF_SOUND_SOURCES];
 
@@ -270,6 +269,16 @@ struct MyApp : App, al::osc::PacketHandler {
   void findNeighbors(vector<unsigned>& n, float x, float y, float r, bool shouldSort = false) {
     findNearestNeighbors(kd, Vec2f(x, y), r, n);
     if (shouldSort) {
+      sort(n.begin(), n.end(),
+        [&](unsigned a, unsigned b) {
+        float xa = x - starsystem[a].x;
+        float ya = y - starsystem[a].y;
+        float xb = x - starsystem[b].x;
+        float yb = y - starsystem[b].y;
+        return (xa * xa + ya * ya)
+          < (xb * xb + yb * yb);
+      });
+/*
       // XXX is this correct???
       sort(n.begin(), n.end(), [&](unsigned a, unsigned b) {
         float dist_a = (Vec2f(x, y) - Vec2f(starsystem[a].x, starsystem[a].y)).mag();
@@ -278,12 +287,13 @@ struct MyApp : App, al::osc::PacketHandler {
         if (dist_b > dist_a) return 1;
         return 0;
       });
+*/
     }
   }
 
   MyApp() : scene(BLOCK_SIZE) {
-    //macOS = autonomous = onLaptop = true;
-    //macOS = autonomous = true;
+    macOS = system("ls /Applications >> /dev/null") == 0;
+    autonomous = macOS;
 
     // Make a circle
     //
@@ -383,49 +393,48 @@ struct MyApp : App, al::osc::PacketHandler {
     //audioIO().print();
     //fflush(stdout);
 
-    speakerLayout = new SpeakerLayout();
-    if (onLaptop) {
-      cout << "Using 2 speaker layout" << endl;
-      speakerLayout->addSpeaker(Speaker(0, 45, 0, 1.0, 1.0));
-      speakerLayout->addSpeaker(Speaker(1, -45, 0, 1.0, 1.0));
+    if (macOS) {
+      speakerLayout = new HeadsetSpeakerLayout();
+      panner = new StereoPanner(*speakerLayout);
     }
     else {
       cout << "Using 3 speaker layout" << endl;
+      speakerLayout = new SpeakerLayout();
       speakerLayout->addSpeaker(Speaker(0,   0, 0, 100.0, 1.0));
       speakerLayout->addSpeaker(Speaker(1, 120, 0, 100.0, 1.0));
       speakerLayout->addSpeaker(Speaker(2,-120, 0, 100.0, 1.0));
       //speakerLayout->addSpeaker(Speaker(3,   0, 0,   0.0, 0.5));
+      panner = new Vbap(*speakerLayout);
+      dynamic_cast<Vbap*>(panner)->setIs3D(false); // no 3d!
     }
-    panner = new Vbap(*speakerLayout);
-    panner->setIs3D(false); // no 3d!
     panner->print();
     listener = scene.createListener(panner);
     listener->compile(); // XXX need this?
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
       source[i].nearClip(near);
       source[i].farClip(listenRadius);
-      source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
-      source[i].law(ATTEN_NONE);
-      //source[i].law(ATTEN_INVERSE);
+      if (macOS) {
+        source[i].law(ATTEN_INVERSE_SQUARE);
+        source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
+        //source[i].law(ATTEN_INVERSE);
+      }
+      else {
+        source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
+        source[i].law(ATTEN_NONE);
+      }
       //source[i].law(ATTEN_LINEAR);
       scene.addSource(source[i]);
     }
     scene.usePerSampleProcessing(false);
     //scene.usePerSampleProcessing(true);
 
-    if (onLaptop) {
-      cout << "we're on a laptop, so use default audio hardware" << endl;
-      initAudio(44100, BLOCK_SIZE);
+    if (macOS) {
+      audioIO().device(AudioDevice("TASCAM"));
+      //initAudio(44100, BLOCK_SIZE);
+      initAudio(44100, BLOCK_SIZE, 4, 0);
     }
     else {
-      if (macOS) {
-        cout << "we're on macOS (probably Karl's machine)" << endl;
-        audioIO().device(AudioDevice("TASCAM"));
-      }
-      else {
-        cout << "we're on the mini, so we will try the TASCAM" << endl;
-        audioIO().device(AudioDevice("US-4x4 Wave"));
-      }
+      audioIO().device(AudioDevice("US-4x4 Wave"));
       initAudio(44100, BLOCK_SIZE, 4, 0);
     }
     cout << "Using audio device: " << endl;
@@ -455,7 +464,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
 //    for (int i = 0; i < n.size(); i++)
 //      cout << n[i] << " ";
-    cout << n.size() << endl;
+    //cout << n.size() << endl;
 
 
     // send neighbors
