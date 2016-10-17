@@ -1,0 +1,7 @@
+#!/bin/sh
+[ -d /home/somnium/AlloSomnium ] || echo "can't find /home/somnium/AlloSomnium" && exit
+cd /home/somnium/AlloSomnium
+exit
+[ -d wav_182864 ] || echo "can't find wav_182864" && exit
+cd wav_182864
+rsync -avz danny@nonce.mat.ucsb.edu:/kepler/wavify/* .
