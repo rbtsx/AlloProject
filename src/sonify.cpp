@@ -697,6 +697,7 @@ int main(int argc, char* argv[]) {
   // an argument
   //
   path.push_back(".");
+  path.push_back("/");
   path.push_back("..");
   for (int i = 1; i < argc; i++)
     path.push_back(argv[i]);
