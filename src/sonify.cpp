@@ -248,7 +248,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
   float zd = 0, rd = 0;
   //float x = 0, y = 0, z = 666, listenRadius = 75, loadRadius = 100, unloadRadius = 150, near = 0.2;
-  float x = 0, y = 0, z = 666, listenRadius = 40, loadRadius = 55, unloadRadius = 80, near = 0.2; // danny changed to this
+  float x = 0, y = 0, z = 666, listenRadius = 30, loadRadius = 40, unloadRadius = 46, near = 0.2; // danny changed to this
   Vec3f go;
 
   //vector<unsigned> loaded;
