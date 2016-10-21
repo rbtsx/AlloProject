@@ -13,8 +13,7 @@ using namespace std;
 
 const unsigned skip = 100;
 
-//#define DATASET "wav_sonify/"
-#define DATASET "wav_182864/"
+#define DATASET "wavify/"
 //#define FFFI_FILE "testFFFI.png"
 //#define FFFI_FILE "FFFI.tif"
 #define FFFI_FILE "printedFFFI.png"
@@ -416,13 +415,15 @@ struct MyApp : App, al::osc::PacketHandler {
       source[i].nearClip(near);
       source[i].farClip(listenRadius);
       if (macOS) {
-        source[i].law(ATTEN_INVERSE_SQUARE);
+        source[i].law(ATTEN_LINEAR);
+        //source[i].law(ATTEN_INVERSE_SQUARE);
         source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
         //source[i].law(ATTEN_INVERSE);
       }
       else {
         source[i].dopplerType(DOPPLER_NONE); // XXX doppler kills when moving fast!
-        source[i].law(ATTEN_NONE);
+        source[i].law(ATTEN_LINEAR);
+        //source[i].law(ATTEN_NONE);
       }
       //source[i].law(ATTEN_LINEAR);
       scene.addSource(source[i]);
@@ -485,7 +486,7 @@ struct MyApp : App, al::osc::PacketHandler {
         source[i].pos(starsystem[n[i]].x, starsystem[n[i]].y, 0);
         double d = (source[i].pos() - listener->pos()).mag();
         double a = source[i].attenuation(d);
-        double db = a * log(10) / log(20);
+        double db = log10(a) * 20.0;
         cout << d << "," << a << "," << db << endl;
       }
 
