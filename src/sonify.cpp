@@ -11,6 +11,8 @@
 using namespace al;
 using namespace std;
 
+const unsigned skip = 100;
+
 //#define DATASET "wav_sonify/"
 #define DATASET "wav_182864/"
 //#define FFFI_FILE "testFFFI.png"
@@ -479,8 +481,13 @@ struct MyApp : App, al::osc::PacketHandler {
     // set sound source positions
     //
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
-      if (i < n.size())
+      if (i < n.size()) {
         source[i].pos(starsystem[n[i]].x, starsystem[n[i]].y, 0);
+        double d = (source[i].pos() - listener->pos()).mag();
+        double a = source[i].attenuation(d);
+        double db = a * log(10) / log(20);
+        cout << d << "," << a << "," << db << endl;
+      }
 
     // position the listener
     //
@@ -708,6 +715,11 @@ void load(vector<StarSystem>& starsystem, string filePath) {
   ifstream mapFile(filePath);
   string line;
   while (getline(mapFile, line)) {
+    if (skip) {
+      static unsigned i = 0;
+      if (i++ % skip) continue;
+    }
+
 //    cout << line.length() << endl;
     char *p = new char[line.length() + 1];
     strcpy(p, line.c_str());

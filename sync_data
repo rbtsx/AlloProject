@@ -1,6 +1,0 @@
-#!/bin/sh
-
-mkdir -p txt
-rsync -av "$1@nonce.mat.ucsb.edu:/kepler/txt/*" txt
-mkdir -p wav
-rsync -av "$1@nonce.mat.ucsb.edu:/kepler/wav/*_fixed.wav" wav

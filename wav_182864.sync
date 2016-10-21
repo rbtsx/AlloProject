@@ -1,3 +1,0 @@
-#!/bin/sh
-
-rsync -av "$1@nonce.mat.ucsb.edu:/kepler/wav_182864" .
