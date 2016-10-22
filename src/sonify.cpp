@@ -239,6 +239,7 @@ void unload(StarSystem& starsystem) {
 void load(vector<StarSystem>& starsystem, string filePath);
 
 struct MyApp : App, al::osc::PacketHandler {
+  osc::Send heartbeat;
 
   Node* kd = NULL; // XXX very important that this is initially NULL!!!
 
@@ -450,6 +451,7 @@ struct MyApp : App, al::osc::PacketHandler {
     App::oscRecv().open(13004, "127.0.0.1", 0.1, Socket::UDP | Socket::DGRAM);
     App::oscRecv().handler(*this);
     App::oscRecv().start();
+    heartbeat.open(13007, "127.0.0.1", 0.1, Socket::UDP | Socket::DGRAM);
   }
 
   virtual void onSound(AudioIOData& io) {
@@ -515,6 +517,16 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onAnimate(double dt) {
+    static double t = 0;
+    t += dt;
+    if (t > 1.0) {
+      t -= 1.0;
+
+      heartbeat.beginMessage("/sonify");
+      heartbeat.endMessage();
+      heartbeat.send();
+    }
+
     z += zd;
     if (z > 25010) z = 25010;
     if (z < 1) z = 1;
