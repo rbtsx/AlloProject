@@ -11,7 +11,7 @@
 using namespace al;
 using namespace std;
 
-const unsigned skip = 100;
+const unsigned skip = 0;
 
 #define DATASET "wavify/"
 //#define FFFI_FILE "testFFFI.png"
@@ -248,7 +248,7 @@ struct MyApp : App, al::osc::PacketHandler {
   bool shouldDrawImage = false;
 
   float zd = 0, rd = 0;
-  float x = 0, y = 0, z = 666, listenRadius = 75, loadRadius = 100, unloadRadius = 150, near = 0.2;
+  float x = 0, y = 0, z = 666, listenRadius = 60, loadRadius = 80, unloadRadius = 100, near = 0.2;
   Vec3f go;
 
   //vector<unsigned> loaded;
@@ -484,10 +484,10 @@ struct MyApp : App, al::osc::PacketHandler {
     for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++)
       if (i < n.size()) {
         source[i].pos(starsystem[n[i]].x, starsystem[n[i]].y, 0);
-        double d = (source[i].pos() - listener->pos()).mag();
-        double a = source[i].attenuation(d);
-        double db = log10(a) * 20.0;
-        cout << d << "," << a << "," << db << endl;
+        //double d = (source[i].pos() - listener->pos()).mag();
+        //double a = source[i].attenuation(d);
+        //double db = log10(a) * 20.0;
+        //cout << d << "," << a << "," << db << endl;
       }
 
     // position the listener
