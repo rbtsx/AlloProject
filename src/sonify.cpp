@@ -526,7 +526,7 @@ struct MyApp : App, al::osc::PacketHandler {
 
       heartbeat.beginMessage("/log");
         heartbeat << "sonify";
-        heartbeat << t;
+        heartbeat << static_cast<float>(t);
       heartbeat.endMessage();
       heartbeat.send();
     }
