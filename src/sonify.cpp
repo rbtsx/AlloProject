@@ -516,17 +516,17 @@ struct MyApp : App, al::osc::PacketHandler {
     scene.render(io);
   }
 
-  double time = 0;
+  double t = 0;
   virtual void onAnimate(double dt) {
-    time += dt;
-    static double t = 0;
     t += dt;
-    if (t > 1.0) {
-      t -= 1.0;
+    static double p = 0;
+    p += dt;
+    if (p > 1.0) {
+      p -= 1.0;
 
       heartbeat.beginMessage("/log");
         heartbeat << "sonify";
-        heartbeat << time;
+        heartbeat << t;
       heartbeat.endMessage();
       heartbeat.send();
     }
