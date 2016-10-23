@@ -13,6 +13,8 @@ using namespace std;
 
 const unsigned skip = 0;
 
+unsigned tryToPlayUnloaded = 0;
+
 #define DATASET "wavify/"
 //#define FFFI_FILE "testFFFI.png"
 //#define FFFI_FILE "FFFI.tif"
@@ -64,12 +66,13 @@ struct DynamicSamplePlayer : GammaSamplePlayerFloatCubicWrap {
 };
 
 struct StarSystem {
-  DynamicSamplePlayer player;
+  volatile bool loaded = false;;
   unsigned kic;
   float x, y, amplitude;
+  char name[10];
+  DynamicSamplePlayer player;
   //float ascension, delcination;
   //int channel;
-  char name[10];
 };
 
 vector<StarSystem> starsystem;
@@ -221,6 +224,7 @@ bool load(StarSystem& starsystem) {
   sprintf(fileName, DATASET "%09d.g.bin.wav", starsystem.kic);
   string filePath = findPath(fileName, false);
   if (starsystem.player.load(filePath.c_str())) {
+    starsystem.loaded = true;
     //cout << "Loaded " << fileName << " into memory!"<< endl;
     return true;
   }
@@ -230,6 +234,7 @@ bool load(StarSystem& starsystem) {
 }
 
 void unload(StarSystem& starsystem) {
+  starsystem.loaded = false;
   char fileName[200];
   sprintf(fileName, DATASET "%09d.g.bin.wav", starsystem.kic);
   //cout << "Unloaded " << fileName << " from memory!"<< endl;
@@ -294,7 +299,7 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   MyApp() : scene(BLOCK_SIZE) {
-    macOS = system("ls /Applications >> /dev/null") == 0;
+    macOS = system("ls /Applications >> /dev/null 2>&1") == 0;
     autonomous = macOS;
 
     // Make a circle
@@ -462,24 +467,15 @@ struct MyApp : App, al::osc::PacketHandler {
     float x = nav().pos().x;
     float y = nav().pos().y;
 
-    // find all the neighbors in sorted order
+    // find all neighbors in the listening radius
     //
     vector<unsigned> n;
-    findNeighbors(n, x, y, listenRadius, true);
+    findNeighbors(n, x, y, listenRadius);
+    //findNeighbors(n, x, y, listenRadius, true);
 
 //    for (int i = 0; i < n.size(); i++)
 //      cout << n[i] << " ";
     //cout << n.size() << endl;
-
-
-    // send neighbors
-    //
-    oscSend().beginMessage("/knn");
-    for (int i = 0; i < n.size(); i++)
-      if (i < MAXIMUM_NUMBER_OF_SOUND_SOURCES)
-        oscSend() << starsystem[n[i]].name;
-    oscSend().endMessage();
-    oscSend().send();
 
     // set sound source positions
     //
@@ -502,8 +498,10 @@ struct MyApp : App, al::osc::PacketHandler {
       for (int i = 0; i < MAXIMUM_NUMBER_OF_SOUND_SOURCES; i++) {
         if (i < n.size()) {
           float f = 0;
-          if (starsystem[n[i]].player.size() > 1)
+          if (starsystem[n[i]].loaded)
             f = starsystem[n[i]].player();
+          else
+            tryToPlayUnloaded++;
           double d = isnan(f) ? 0.0 : (double)f; // XXX need this nan check?
           source[i].writeSample(d);
         }
@@ -526,10 +524,20 @@ struct MyApp : App, al::osc::PacketHandler {
 
       heartbeat.beginMessage("/log");
         heartbeat << "sonify";
-        heartbeat << static_cast<float>(t);
+        heartbeat << toTimecode(1000000000 * walltime() - 2.52e13, "H M S");
       heartbeat.endMessage();
       heartbeat.send();
     }
+
+    /*
+    static double d = 0;
+    d += dt;
+    if (d > 0.05) {
+      d -= 0.05;
+      x = rnd::uniform(-6000, 6000);
+      y = rnd::uniform(-6000, 6000);
+    }
+    */
 
     z += zd;
     if (z > 25010) z = 25010;
@@ -589,7 +597,6 @@ struct MyApp : App, al::osc::PacketHandler {
         loaded.insert(i);
 
 /*
-
     sort(loaded.begin(), loaded.end());
 
     vector<unsigned> neighbor, shouldLoad;
@@ -626,6 +633,18 @@ struct MyApp : App, al::osc::PacketHandler {
       field.colors()[i].set(HSV(0.6, 1, 1), 1);
     }
 */
+
+    // send neighbors
+    //
+    vector<unsigned> listen;
+    findNeighbors(listen, x, y, listenRadius, true);
+    oscSend().beginMessage("/knn");
+    for (int i = 0; i < listen.size(); i++)
+      if (i < MAXIMUM_NUMBER_OF_SOUND_SOURCES)
+        oscSend() << starsystem[listen[i]].name;
+    oscSend().endMessage();
+    oscSend().send();
+
   }
 
   virtual void onDraw(Graphics& g, const Viewpoint& v) {
@@ -649,6 +668,11 @@ struct MyApp : App, al::osc::PacketHandler {
   }
 
   virtual void onKeyDown(const ViewpointWindow& w, const Keyboard& k) {
+
+    if (k.key() == 'm') {
+      autonomous = !autonomous;
+      cout << "autonomous mode " << (autonomous ? "on" : "off") << endl;
+    }
 
     if (k.key() == ' ') {
       stringstream s;
